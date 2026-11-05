@@ -1,0 +1,900 @@
+<title>Schema CRM Somaspace</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: colonna centrale da 1080px, sezioni impilate; i diagrammi a strati diventano una colonna sola su telefono */
+:root{
+  --bg:#F5F6F8; --surface:#FFFFFF; --sunken:#ECEEF2; --ink:#14161B; --muted:#596070; --faint:#8A90A0; --line:#DFE2E9;
+  --accent:#2A52DB; --accent-soft:#E7ECFC;
+  --app:#2A52DB; --app-soft:#E9EEFD;
+  --db:#0B7F62; --db-soft:#E1F3ED;
+  --job:#A6570A; --job-soft:#FBEEDC;
+  --ext:#596070; --ext-soft:#ECEEF2;
+  --user:#7A3FB8; --user-soft:#F2EAFB;
+  --priv:#B3261E; --priv-soft:#FBE9E7;
+  --good:#0B7F62; --bad:#B3261E;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"Geist","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1014; --surface:#161920; --sunken:#1D2129; --ink:#E8EAEF; --muted:#A0A6B4; --faint:#6E7483; --line:#2A2F39;
+  --accent:#86A2FF; --accent-soft:#1B2445;
+  --app:#86A2FF; --app-soft:#18203B;
+  --db:#4FD1A8; --db-soft:#0F2620;
+  --job:#F0A55A; --job-soft:#2B1F12;
+  --ext:#A0A6B4; --ext-soft:#1D2129;
+  --user:#C39AF0; --user-soft:#241836;
+  --priv:#FF8A80; --priv-soft:#2E1715;
+  --good:#4FD1A8; --bad:#FF8A80;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0E1014; --surface:#161920; --sunken:#1D2129; --ink:#E8EAEF; --muted:#A0A6B4; --faint:#6E7483; --line:#2A2F39;
+  --accent:#86A2FF; --accent-soft:#1B2445;
+  --app:#86A2FF; --app-soft:#18203B;
+  --db:#4FD1A8; --db-soft:#0F2620;
+  --job:#F0A55A; --job-soft:#2B1F12;
+  --ext:#A0A6B4; --ext-soft:#1D2129;
+  --user:#C39AF0; --user-soft:#241836;
+  --priv:#FF8A80; --priv-soft:#2E1715;
+  --good:#4FD1A8; --bad:#FF8A80;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 88px;display:flex;flex-direction:column;gap:64px}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+h1,h2,h3,h4{text-wrap:balance;margin:0}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(32px,5.4vw,48px);letter-spacing:-.025em;line-height:1.02}
+h2{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:-.015em;line-height:1.15}
+h3{font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:-.01em;line-height:1.2}
+h4{font-family:var(--mono);font-weight:500;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+p{margin:0}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.lede{color:var(--muted);max-width:65ch}
+
+/* Header */
+.top{display:flex;flex-direction:column;gap:18px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.toc a{font-size:13.5px;text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+
+.sec{display:flex;flex-direction:column;gap:22px;scroll-margin-top:24px}
+.sec-head{display:flex;flex-direction:column;gap:8px}
+
+/* Badge */
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:2px 6px;vertical-align:2px;margin-left:6px;font-weight:500}
+.badge.new{background:var(--app-soft);color:var(--app)}
+.badge.par{background:var(--user-soft);color:var(--user)}
+.badge.spec{background:var(--sunken);color:var(--muted)}
+
+/* Cosa cambia */
+.changes{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.ch{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1.2fr);gap:20px;padding-block:13px;border-bottom:1px solid var(--line);font-size:14px}
+.ch.head{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding-block:10px}
+.ch .t{font-weight:600}
+.ch .old{color:var(--muted)}
+
+/* Risposta */
+.answer{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px;align-items:center}
+.answer h2{font-size:28px}
+.answer .txt{display:flex;flex-direction:column;gap:12px}
+.answer .txt p{color:var(--muted);max-width:52ch}
+.tracks{display:flex;flex-direction:column;gap:10px;min-width:0}
+.track{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:center}
+.track .lbl{font-family:var(--mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.track .bar{display:flex;gap:6px;min-width:0}
+.chip{font-size:12.5px;font-weight:500;border-radius:7px;padding:7px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.t{background:var(--db-soft);color:var(--db)}
+.chip.d{background:var(--user-soft);color:var(--user)}
+.chip.n{background:var(--app-soft);color:var(--app)}
+.chip.ghost{background:transparent;border:1px dashed var(--line);color:var(--faint)}
+.merge{font-family:var(--mono);font-size:12px;color:var(--muted);padding-left:86px}
+
+/* Decisioni */
+.decisions{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 28px;margin:0}
+.decisions div{border-top:1px solid var(--line);padding-block:14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.decisions dt{font-family:var(--mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.decisions dd{margin:0;font-weight:500}
+.decisions dd span{display:block;font-weight:400;color:var(--muted);font-size:13.5px}
+
+/* Moduli */
+.modules{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.module{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.module .num{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.module p{color:var(--muted);font-size:14px}
+.module ul{margin:2px 0 0;padding-left:18px;font-size:13.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+
+/* Architettura */
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.arch{display:flex;flex-direction:column}
+.layer,.link{display:grid;grid-template-columns:150px minmax(0,1fr);gap:18px}
+.layer-label{font-family:var(--mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding-top:13px}
+.layer-body{display:flex;flex-direction:column;gap:8px;min-width:0}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.node{border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;min-width:0;border:1px solid transparent}
+.node b{font-weight:600;font-size:14.5px;color:var(--ink)}
+.node span{font-size:13px;color:var(--muted)}
+.node small{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:7px;margin-top:5px;line-height:1.45}
+.k-user{background:var(--user-soft)}
+.k-future{background:transparent;border:1px dashed var(--user)}
+.k-app{background:var(--app-soft)}
+.k-db{background:var(--db-soft);border-color:var(--db)}
+.k-job{background:var(--job-soft)}
+.k-ext{background:var(--surface);border-color:var(--line)}
+.node .kind{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
+.k-user .kind,.k-future .kind{color:var(--user)} .k-app .kind{color:var(--app)} .k-db .kind{color:var(--db)} .k-job .kind{color:var(--job)} .k-ext .kind{color:var(--ext)}
+.layer-note{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.link .conn{grid-column:2;margin-left:26px;border-left:2px dashed var(--line);padding:9px 0 9px 14px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.link .conn::before{content:"↕ ";color:var(--faint)}
+.callout{background:var(--sunken);border-radius:10px;padding:14px 16px;font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.callout b{color:var(--ink);font-weight:600}
+
+/* Privacy */
+.levels{display:flex;flex-direction:column;gap:10px}
+.level{display:grid;grid-template-columns:200px minmax(0,1fr) 120px;gap:18px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.level .who{display:flex;flex-direction:column;gap:4px}
+.level .who b{font-family:var(--display);font-size:17px;font-weight:600}
+.level .who span{font-size:13px;color:var(--muted)}
+.level ul{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:3px}
+.level .notion{font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--muted)}
+.level .notion b{display:block;font-family:var(--body);font-size:13.5px;font-weight:600}
+.level.p1{border-color:var(--priv);background:var(--priv-soft)}
+.level.p1 .notion b{color:var(--priv)}
+.level.p2 .notion b,.level.p3 .notion b{color:var(--good)}
+.bridge{font-family:var(--mono);font-size:12px;color:var(--muted);padding-left:24px;border-left:2px dashed var(--priv);margin-left:24px;padding-block:4px}
+
+/* Modello dati */
+.group{display:flex;flex-direction:column;gap:10px}
+.entities{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.entity{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.entity header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.entity .note{font-size:12.5px;color:var(--muted);text-align:right}
+.fields{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.fields li{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;border-bottom:1px dotted var(--line);padding-bottom:5px}
+.fields li:last-child{border-bottom:0;padding-bottom:0}
+.fields li em{font-style:normal;font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
+.rel{font-family:var(--mono);font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:8px;margin-top:auto}
+.tech{display:flex;flex-wrap:wrap;gap:8px}
+.tech span{font-size:13px;background:var(--sunken);border-radius:7px;padding:6px 10px;color:var(--muted)}
+.tech b{color:var(--ink);font-weight:500}
+
+/* Flussi */
+.flows{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+.flow{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.flow .when{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:flex;flex-direction:column;gap:10px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;font-size:14px}
+.steps li::before{content:counter(s);font-family:var(--mono);font-size:11.5px;width:22px;height:22px;border-radius:50%;background:var(--sunken);color:var(--muted);display:grid;place-items:center;margin-top:1px}
+.steps .fork{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.steps .fork span{font-size:13px;color:var(--muted)}
+.steps .fork b{font-weight:600;color:var(--ink)}
+.flow .foot{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:auto}
+
+.deal{grid-column:1/-1}
+.scale-box{overflow-x:auto}
+.scale-box svg{display:block;min-width:600px;width:100%;height:auto}
+.sv-track{stroke:var(--line);stroke-width:2;fill:none}
+.sv-dot{fill:var(--surface);stroke:var(--job);stroke-width:2}
+.sv-dot0{fill:var(--job)}
+.sv-day{font-family:var(--mono);font-size:11px;fill:var(--job)}
+.sv-lbl{font-family:var(--body);font-size:12.5px;fill:var(--ink)}
+.sv-tick{stroke:var(--line);stroke-width:1}
+.sv-grid{font-family:var(--mono);font-size:9.5px;fill:var(--faint)}
+.stages{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13.5px}
+.stage{border-radius:999px;padding:5px 12px;font-weight:500;background:var(--sunken)}
+.stage.won{background:var(--db-soft);color:var(--good)}
+.stage.lost{color:var(--bad)}
+.arrow{color:var(--faint)}
+.outcomes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.outcomes div{background:var(--sunken);border-radius:10px;padding:12px 14px;font-size:13.5px;color:var(--muted)}
+.outcomes b{color:var(--ink);font-weight:600;display:block;margin-bottom:2px}
+
+/* Roadmap */
+.lanes-box{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.lanes{display:grid;grid-template-columns:84px repeat(9,minmax(80px,1fr));gap:8px;min-width:900px;align-items:stretch}
+.lanes .ll{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);align-self:center}
+.ph{border-radius:8px;padding:9px 10px;font-size:12.5px;font-weight:500;display:flex;flex-direction:column;gap:2px;line-height:1.3}
+.ph em{font-style:normal;font-family:var(--mono);font-size:10.5px;opacity:.85}
+.ph.t{background:var(--db-soft);color:var(--db)}
+.ph.d{background:var(--user-soft);color:var(--user)}
+.ph.n{background:var(--app-soft);color:var(--app)}
+.gate{font-family:var(--mono);font-size:11px;color:var(--muted);border-left:2px solid var(--user);padding-left:8px;align-self:center;grid-column:4 / span 2}
+
+.phases{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.phase{display:grid;grid-template-columns:64px minmax(0,1.5fr) minmax(0,1fr);gap:20px;padding-block:18px;border-bottom:1px solid var(--line)}
+.phase .id{font-family:var(--display);font-weight:700;font-size:26px;line-height:1;color:var(--faint)}
+.phase .what{display:flex;flex-direction:column;gap:6px}
+.phase .what p{color:var(--muted);font-size:14px}
+.phase .done{font-size:14px;display:flex;flex-direction:column;gap:4px}
+.phase .done .eyebrow{font-size:11px}
+
+/* Cosa serve */
+.needs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.need{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.need ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.need li{display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;font-size:14px}
+.need li::before{content:"";width:14px;height:14px;border:1.5px solid var(--faint);border-radius:4px;margin-top:3px}
+.need li span{display:block;font-size:12.5px;color:var(--muted)}
+.need .first li::before{border-color:var(--accent)}
+
+footer{font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:18px}
+
+@media (max-width:760px){
+  .answer{grid-template-columns:1fr;padding:18px}
+  .layer,.link{grid-template-columns:1fr;gap:6px}
+  .layer-label{padding-top:0}
+  .link .conn{grid-column:1}
+  .phase{grid-template-columns:40px minmax(0,1fr);gap:8px 14px}
+  .phase .done{grid-column:2}
+  .phase .id{font-size:22px}
+  .flows,.modules{grid-template-columns:1fr}
+  .ch{grid-template-columns:1fr;gap:3px}
+  .ch.head{display:none}
+  .ch .old::before{content:"Prima: ";font-weight:500}
+  .ch .new::before{content:"Ora: ";font-weight:500;color:var(--muted)}
+  .level{grid-template-columns:1fr;gap:10px}
+  .level .notion{text-align:left}
+}
+@media (max-width:440px){
+  .track{grid-template-columns:1fr;gap:6px}
+  .merge{padding-left:0}
+  .track .bar{flex-wrap:wrap}
+}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">Somaspace · CRM interno · versione 2</div>
+  <h1>Schema CRM Somaspace</h1>
+  <p class="lede">Come è fatto il sistema, come si muovono i dati e in che ordine lo costruiamo. Parte dalla specifica di Michele e aggiunge quello che abbiamo deciso dopo: database nostro con Notion come specchio, progetti e task, meeting e chiamate analizzati, opportunità proposte dal sistema, caselle email separate per ogni fondatore.</p>
+  <div class="meta"><span>Aggiornato al 3 nov 2026</span><span>Fonte: specifica tecnica del 24 ott 2026 e decisioni successive</span></div>
+  <nav class="toc" aria-label="Sezioni">
+    <a href="#cambia">Cosa cambia</a>
+    <a href="#ordine">Da dove partiamo</a>
+    <a href="#decisioni">Decisioni</a>
+    <a href="#moduli">Moduli</a>
+    <a href="#architettura">Architettura</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#dati">Dati</a>
+    <a href="#flussi">Flussi</a>
+    <a href="#fasi">Fasi</a>
+    <a href="#serve">Cosa serve da voi</a>
+  </nav>
+</header>
+
+<section id="cambia" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Rispetto alla specifica</div>
+    <h2>Cosa c'era già e cosa è nuovo</h2>
+    <p class="lede">La specifica copre bene relazioni e follow-up. Mancavano la parte operativa (progetti e task), il contenuto dei meeting, le opportunità proposte dal sistema e la separazione tra le caselle email.</p>
+  </div>
+  <div class="changes">
+    <div class="ch head"><span>Tema</span><span>Nella specifica</span><span>Nel nuovo disegno</span></div>
+    <div class="ch"><span class="t">Database</span><span class="old">Notion come unico archivio</span><span class="new">PostgreSQL come fonte di verità, Notion come specchio consultabile</span></div>
+    <div class="ch"><span class="t">Progetti</span><span class="old">Creati in PROGETTI quando un deal è vinto</span><span class="new">Progetti nel sistema con stato, team e salute, copiati in Notion</span></div>
+    <div class="ch"><span class="t">Task</span><span class="old">Non previsti</span><span class="new">Task e sotto-task con assegnatari e scadenze, anche proposti dai meeting</span></div>
+    <div class="ch"><span class="t">Meeting</span><span class="old">Registrati da Calendar con titolo e data</span><span class="new">Trascrizione di Meet analizzata: sintesi, decisioni, task, prossimi passi</span></div>
+    <div class="ch"><span class="t">Chiamate</span><span class="old">Nota manuale di una riga</span><span class="new">Nota vocale dall'app o audio caricato, trascritti e analizzati</span></div>
+    <div class="ch"><span class="t">Email tra fondatori</span><span class="old">Interazioni visibili a tutti, con il campo Casella</span><span class="new">Ogni casella è privata. Al team arrivano solo fatti di lavoro, senza dire da chi</span></div>
+    <div class="ch"><span class="t">Opportunità</span><span class="old">Follow-up su contatti e preventivi</span><span class="new">In più: servizi nuovi, bandi e segnali raccolti nelle conversazioni</span></div>
+    <div class="ch"><span class="t">Accessi</span><span class="old">Lista di 3 email</span><span class="new">Ruoli pronti per chi arriverà dopo. Oggi è attivo solo Fondatore</span></div>
+    <div class="ch"><span class="t">Agenti</span><span class="old">Job pianificati</span><span class="new">Job pianificati più server MCP per lavorare in chat</span></div>
+  </div>
+</section>
+
+<section id="ordine" class="sec">
+  <div class="answer">
+    <div class="txt">
+      <div class="eyebrow">Da dove partiamo</div>
+      <h2>Prima le fondamenta, il design in parallelo</h2>
+      <p>Le fasi 0 e 1 (account, login, ruoli, database, migrazione dei dati) non hanno schermate, quindi non dipendono dal layout. Mentre le costruisco, voi mi mandate i riferimenti di Attio e definiamo insieme lo stile.</p>
+      <p>Quando parte la fase 2, la prima con le schermate, il design è già deciso e non si rifà niente due volte.</p>
+    </div>
+    <div class="tracks" aria-label="Le due attività in parallelo">
+      <div class="track"><div class="lbl">Tecnica</div><div class="bar"><span class="chip t">0 · Fondamenta</span><span class="chip t">1 · Dati</span></div></div>
+      <div class="track"><div class="lbl">Design</div><div class="bar"><span class="chip d">Riferimenti</span><span class="chip d">Stile e bozze</span></div></div>
+      <div class="merge">↓ si uniscono qui</div>
+      <div class="track"><div class="lbl">Insieme</div><div class="bar"><span class="chip n">2 · App base</span><span class="chip ghost">poi dalla 3 alla 8</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="decisioni" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Decisioni prese</div>
+    <h2>Le scelte di base</h2>
+  </div>
+  <dl class="decisions">
+    <div><dt>Database</dt><dd>PostgreSQL su Supabase<span>Fonte di verità, data center a Francoforte</span></dd></div>
+    <div><dt>Notion</dt><dd>Specchio a una via<span>Ci finiscono anche progetti e task. Le modifiche fatte in Notion per ora non tornano nel sistema</span></dd></div>
+    <div><dt>Progetti e task</dt><dd>Nel sistema<span>Il sistema diventa lo strumento operativo, Notion resta consultabile</span></dd></div>
+    <div><dt>Meeting e chiamate</dt><dd>Meet, nota vocale, audio<span>Trascrizioni di Google Meet, nota vocale dall'app dopo una chiamata, caricamento di registrazioni</span></dd></div>
+    <div><dt>Email</dt><dd>Caselle separate<span>Nessun fondatore vede le email di un altro. I fatti sui clienti si condividono da soli e si possono ritirare</span></dd></div>
+    <div><dt>Accessi</dt><dd>Ruoli fin da subito<span>Oggi solo i 3 fondatori. Altri livelli si attivano quando servono, senza rifare niente</span></dd></div>
+    <div><dt>Agenti</dt><dd>Propongono, non decidono<span>Non cancellano, non inviano email. Task, contatti e cambi importanti passano da Da approvare</span></dd></div>
+    <div><dt>Stack</dt><dd>TypeScript, servizi gestiti in UE<span>Vercel, Supabase, Trigger.dev, Resend, più un servizio di trascrizione</span></dd></div>
+    <div><dt>Costo stimato</dt><dd>90-150 $ al mese<span>~65 $ di infrastruttura, il resto Claude API e trascrizioni. Da misurare nel primo mese</span></dd></div>
+  </dl>
+</section>
+
+<section id="moduli" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Moduli</div>
+    <h2>Sei parti, un solo sistema</h2>
+    <p class="lede">Ogni modulo legge e scrive sullo stesso database. È questo che permette al sistema di collegare un meeting a un progetto, un'email a un deal, un bando a un cliente dormiente.</p>
+  </div>
+  <div class="modules">
+    <article class="module">
+      <span class="num">1</span><h3>Relazioni <span class="badge spec">specifica</span></h3>
+      <p>Aziende, persone, opportunità ed eventi. I follow-up caldi, freddi e del preventivo.</p>
+    </article>
+    <article class="module">
+      <span class="num">2</span><h3>Progetti e task <span class="badge new">nuovo</span></h3>
+      <p>I progetti di ogni cliente con i loro task, sotto-task, assegnatari e scadenze.</p>
+      <ul><li>Un deal vinto apre il progetto</li><li>Il sistema calcola la salute di ogni progetto</li><li>I task possono nascere da un meeting o da un'email</li></ul>
+    </article>
+    <article class="module">
+      <span class="num">3</span><h3>Memoria <span class="badge new">nuovo</span></h3>
+      <p>Email, meeting, chiamate e note diventano sintesi, decisioni e fatti sul cliente.</p>
+      <ul><li>Tutto collegato a cliente, persona, progetto o deal</li><li>Ricerca per significato: "chi ci ha parlato di fiere?"</li><li>Tiene i segnali con una data per riprenderli al momento giusto</li></ul>
+    </article>
+    <article class="module">
+      <span class="num">4</span><h3>Opportunità proattive <span class="badge new">nuovo</span></h3>
+      <p>Il sistema propone chi contattare e perché, senza aspettare una scadenza di follow-up.</p>
+      <ul><li>Un servizio nuovo: a quali clienti interessa</li><li>Un bando nuovo: quali clienti possono usarlo</li><li>Clienti dormienti e deal persi per tempistica</li></ul>
+    </article>
+    <article class="module">
+      <span class="num">5</span><h3>Agente</h3>
+      <p>Lavora in background e in chat: registra, collega, riassume, propone, prepara bozze e briefing. Non decide al posto vostro.</p>
+    </article>
+    <article class="module">
+      <span class="num">6</span><h3>Accessi e privacy <span class="badge new">nuovo</span></h3>
+      <p>Caselle email separate, tre livelli di visibilità, ruoli pronti per collaboratori futuri.</p>
+    </article>
+  </div>
+</section>
+
+<section id="architettura" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Architettura</div>
+    <h2>Un database al centro, tutto il resto intorno</h2>
+    <p class="lede">L'app e gli agenti leggono e scrivono sullo stesso database. Notion riceve una copia ogni pochi minuti, senza la parte privata, e non rallenta mai l'app.</p>
+  </div>
+  <div class="legend" aria-hidden="true">
+    <span><i style="background:var(--user)"></i>Persone</span>
+    <span><i style="background:var(--app)"></i>Interfacce</span>
+    <span><i style="background:var(--db)"></i>Database</span>
+    <span><i style="background:var(--job)"></i>Job dell'agente</span>
+    <span><i style="background:var(--ext)"></i>Servizi esterni</span>
+  </div>
+
+  <div class="arch">
+    <div class="layer">
+      <div class="layer-label">Chi lo usa</div>
+      <div class="layer-body"><div class="row">
+        <div class="node k-user"><span class="kind">Fondatori</span><b>Michele, Alessia, Giordano</b><span>Dal browser e dal telefono</span></div>
+        <div class="node k-user"><span class="kind">In chat</span><b>Claude Desktop o claude.ai</b><span>Domande al CRM, con il vostro abbonamento</span></div>
+        <div class="node k-future"><span class="kind">In futuro</span><b>Collaboratori</b><span>Ruoli limitati, ad esempio solo i propri progetti e task</span></div>
+      </div></div>
+    </div>
+    <div class="link"><div class="conn">login Google · ognuno vede solo quello che il suo ruolo permette</div></div>
+
+    <div class="layer">
+      <div class="layer-label">Interfacce</div>
+      <div class="layer-body"><div class="row">
+        <div class="node k-app"><span class="kind">Next.js su Vercel</span><b>App web</b><span>crm.somaspaceagency.com</span><small>Oggi, Da approvare, Companies, People, Pipeline, Progetti, Task, Eventi, Opportunità suggerite, Impostazioni. Nota vocale dal telefono, ricerca con Cmd+K</small></div>
+        <div class="node k-app"><span class="kind">MCP su Vercel</span><b>Server MCP</b><span>La porta d'ingresso degli agenti</span><small>Lavora con l'identità di chi chiede: vede quello che vedi tu, non di più. Ogni azione finisce nel log</small></div>
+      </div></div>
+    </div>
+    <div class="link"><div class="conn">lettura e scrittura immediate</div></div>
+
+    <div class="layer">
+      <div class="layer-label">Fonte di verità</div>
+      <div class="layer-body">
+        <div class="node k-db"><span class="kind">Supabase · Francoforte</span><b>PostgreSQL</b><span>Cifrato, backup giornalieri, permessi applicati riga per riga dal database stesso</span><small>Relazioni, progetti e task, memoria (privata e condivisa), servizi e bandi, ruoli, log dell'agente, stato dei sync</small></div>
+      </div>
+    </div>
+    <div class="link"><div class="conn">i job leggono e scrivono qui</div></div>
+
+    <div class="layer">
+      <div class="layer-label">Agente in background</div>
+      <div class="layer-body">
+        <div class="row">
+          <div class="node k-job"><span class="kind">Ogni ora</span><b>Sync email e calendario</b><span>Una casella alla volta, ognuna nel suo spazio privato</span></div>
+          <div class="node k-job"><span class="kind">A fine meeting</span><b>Analisi meeting e chiamate</b><span>Trascrizione, sintesi, decisioni, task proposti</span></div>
+          <div class="node k-job"><span class="kind">Ogni notte</span><b>Relazioni e fatti</b><span>Forza relazione, caldo o freddo, fatti condivisi</span></div>
+          <div class="node k-job"><span class="kind">8:00 lavorativi</span><b>Mattina</b><span>Follow-up, bozze, briefing dei meeting, digest</span></div>
+          <div class="node k-job"><span class="kind">Ogni settimana</span><b>Progetti e bandi</b><span>Salute dei progetti, ricerca di bandi nuovi</span></div>
+          <div class="node k-job"><span class="kind">Su evento</span><b>Arricchimento e abbinamenti</b><span>Nuova azienda, nuovo servizio, nuovo bando</span></div>
+          <div class="node k-job"><span class="kind">Ogni pochi minuti</span><b>Specchio Notion</b><span>Copia tutto tranne la parte privata</span></div>
+        </div>
+        <div class="layer-note">Trigger.dev · retry automatici · coda a massimo 3 richieste al secondo verso Notion</div>
+      </div>
+    </div>
+    <div class="link"><div class="conn">API esterne</div></div>
+
+    <div class="layer">
+      <div class="layer-label">Servizi esterni</div>
+      <div class="layer-body"><div class="row">
+        <div class="node k-ext"><span class="kind">Google</span><b>Gmail, Calendar, Drive</b><span>Posta e meeting di ogni casella, trascrizioni di Meet su Drive, bozze. Non invia mai</span></div>
+        <div class="node k-ext"><span class="kind">Anthropic</span><b>Claude API</b><span>Sintesi, analisi dei meeting, bozze, abbinamenti, ricerca web</span></div>
+        <div class="node k-ext"><span class="kind">Da scegliere</span><b>Trascrizione audio</b><span>Per note vocali e registrazioni caricate. L'audio si cancella dopo</span></div>
+        <div class="node k-ext"><span class="kind">Resend</span><b>Email del digest</b><span>Una al mattino, solo se c'è qualcosa da fare</span></div>
+        <div class="node k-ext"><span class="kind">Notion</span><b>Specchio</b><span>Relazioni, progetti e task in sola lettura</span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Cosa possono fare gli agenti tramite MCP</b>
+    <span>Leggere schede e progetti, cercare nella memoria, vedere la coda di oggi, registrare un'interazione, proporre task, contatti e modifiche. Le proposte finiscono in Da approvare come quelle dei job. Non possono cancellare né inviare email, e un agente usato da Michele non vede la casella di Giordano.</span>
+  </div>
+</section>
+
+<section id="privacy" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Privacy tra fondatori</div>
+    <h2>Tre livelli di visibilità</h2>
+    <p class="lede">Ogni casella si collega con il proprio utente e resta privata. Il sistema però impara da tutte e tre e mette a disposizione del team quello che serve per lavorare sul cliente, senza dire da quale casella arriva.</p>
+  </div>
+  <div class="levels">
+    <div class="level p1">
+      <div class="who"><b>Solo tu</b><span>Nessun altro utente, nessun agente usato da altri</span></div>
+      <ul>
+        <li>Sintesi delle tue email e link ai tuoi thread</li>
+        <li>Le tue bozze di follow-up</li>
+        <li>Trascrizioni dei meeting che hai organizzato e audio che hai caricato</li>
+        <li>Il testo completo delle email resta in Gmail e non viene mai salvato</li>
+      </ul>
+      <div class="notion">In Notion<b>Mai</b></div>
+    </div>
+    <div class="bridge">estrazione automatica dei soli fatti di lavoro · ogni fondatore vede cosa ha condiviso la sua casella e può ritirarlo</div>
+    <div class="level p2">
+      <div class="who"><b>Team, senza fonte</b><span>Visibile a tutti, senza dire chi l'ha saputo né come</span></div>
+      <ul>
+        <li>Fatti sul cliente: "vogliono rifare il sito entro marzo", "budget fermo fino a gennaio"</li>
+        <li>Data dell'ultimo contatto con l'azienda e forza della relazione</li>
+        <li>Segnali con una data per riprenderli al momento giusto</li>
+      </ul>
+      <div class="notion">In Notion<b>Sì</b></div>
+    </div>
+    <div class="level p3">
+      <div class="who"><b>Team</b><span>Il lavoro comune</span></div>
+      <ul>
+        <li>Anagrafiche, opportunità, progetti e task</li>
+        <li>Sintesi, decisioni e prossimi passi dei meeting con i clienti, salvo quelli segnati come privati</li>
+        <li>Servizi, bandi e opportunità suggerite</li>
+      </ul>
+      <div class="notion">In Notion<b>Sì</b></div>
+    </div>
+  </div>
+  <div class="callout">
+    <b>Come è garantito</b>
+    <span>I permessi sono applicati dal database riga per riga, non solo dall'app: anche un errore nell'interfaccia non mostra le email di un altro. Claude riceve l'istruzione di escludere dai fatti condivisi tutto ciò che è personale (salute, vita privata, questioni del team). Se una stessa email arriva a due fondatori, il fatto condiviso è uno solo. Chi amministra tecnicamente il database potrebbe in teoria leggere il livello privato: se serve, più avanti si aggiunge la cifratura per utente.</span>
+  </div>
+</section>
+
+<section id="dati" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Modello dati</div>
+    <h2>Le tabelle, divise per modulo</h2>
+    <p class="lede">Quelle della specifica restano con gli stessi campi. Le nuove servono a progetti, memoria e opportunità proattive.</p>
+  </div>
+
+  <div class="group">
+    <h4>Relazioni · dalla specifica</h4>
+    <div class="entities">
+      <article class="entity">
+        <header><h3>Companies</h3><span class="note">~130 da AZIENDE</span></header>
+        <ul class="fields">
+          <li>Nome, Dominio <em>dominio = chiave email</em></li>
+          <li>Categoria, Nazione, Relazione <em>Prospect → Cliente</em></li>
+          <li>Connection strength <em>calcolata</em></li>
+          <li>Stato dati <em>Da verificare / Verificato</em></li>
+        </ul>
+        <div class="rel">→ People · Opportunità · Progetti · Memoria</div>
+      </article>
+      <article class="entity">
+        <header><h3>People</h3><span class="note">~135 da CONTATTI</span></header>
+        <ul class="fields">
+          <li>Nome, Cognome, Email <em>email unica</em></li>
+          <li>Modalità follow-up <em>Caldo / Freddo / Nessuno</em></li>
+          <li>Prossimo follow-up, Rimanda a <em>date vere</em></li>
+          <li>Interessi, Evento d'origine <em>select</em></li>
+        </ul>
+        <div class="rel">→ Companies · Opportunità · Task · Memoria</div>
+      </article>
+      <article class="entity">
+        <header><h3>Opportunità</h3><span class="note">10 da OPPORTUNITÀ</span></header>
+        <ul class="fields">
+          <li>Stage <em>Lead / In progress / Vinta / Persa</em></li>
+          <li>Valore iniziale, Valore finale <em>EUR</em></li>
+          <li>Data invio preventivo <em>avvia la sequenza</em></li>
+          <li>Origine <em>diretta, servizio, bando</em></li>
+        </ul>
+        <div class="rel">L'unico posto con gli importi · → Progetto</div>
+      </article>
+      <article class="entity">
+        <header><h3>Eventi</h3><span class="note">da EVENTI E PROGRAMMI</span></header>
+        <ul class="fields">
+          <li>Nome, Data, Tipologia, Paese</li>
+          <li>Persone incontrate, arrivate a un deal <em>conteggi</em></li>
+          <li>Diventate clienti <em>conversione %</em></li>
+        </ul>
+        <div class="rel">→ People</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="group">
+    <h4>Progetti e task · nuovo</h4>
+    <div class="entities">
+      <article class="entity">
+        <header><h3>Progetti</h3><span class="note">da PROGETTI in Notion</span></header>
+        <ul class="fields">
+          <li>Nome, Cliente, Opportunità d'origine</li>
+          <li>Stato <em>Da avviare / Attivo / In pausa / Chiuso</em></li>
+          <li>Owner e team <em>persone di Somaspace</em></li>
+          <li>Salute <em>verde / giallo / rosso, calcolata</em></li>
+          <li>Stato in breve <em>scritto dall'agente</em></li>
+        </ul>
+        <div class="rel">→ Task · Meeting · Fatti · Persone del cliente</div>
+      </article>
+      <article class="entity">
+        <header><h3>Task</h3><span class="note">anche sotto-task</span></header>
+        <ul class="fields">
+          <li>Titolo, Progetto <em>o azienda, persona, deal</em></li>
+          <li>Task padre <em>per i sotto-task</em></li>
+          <li>Assegnatari, Scadenza, Priorità</li>
+          <li>Stato <em>Proposto / Da fare / In corso / Fatto</em></li>
+          <li>Origine <em>manuale, meeting, email, agente</em></li>
+        </ul>
+        <div class="rel">I task proposti dall'agente partono da Proposto</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="group">
+    <h4>Memoria · in gran parte nuovo</h4>
+    <div class="entities">
+      <article class="entity">
+        <header><h3>Interazioni</h3><span class="note">dalla specifica, estese</span></header>
+        <ul class="fields">
+          <li>Tipo <em>email, meeting, chiamata, nota</em></li>
+          <li>Sintesi <em>1-2 righe, mai il testo</em></li>
+          <li>Visibilità <em>Solo tu / Team</em></li>
+          <li>Proprietario <em>di quale casella</em></li>
+          <li>ID sorgente <em>niente doppioni</em></li>
+        </ul>
+        <div class="rel">→ People · Companies · Opportunità · Progetti</div>
+      </article>
+      <article class="entity">
+        <header><h3>Meeting</h3><span class="note">nuovo</span></header>
+        <ul class="fields">
+          <li>Fonte <em>Meet, nota vocale, audio</em></li>
+          <li>Partecipanti <em>clienti e team</em></li>
+          <li>Sintesi e decisioni <em>condivise</em></li>
+          <li>Prossimi passi <em>diventano task proposti</em></li>
+          <li>Trascrizione <em>solo per chi l'ha creata</em></li>
+        </ul>
+        <div class="rel">→ Azienda · Persone · Progetto o deal</div>
+      </article>
+      <article class="entity">
+        <header><h3>Fatti sul cliente</h3><span class="note">nuovo</span></header>
+        <ul class="fields">
+          <li>Testo breve <em>"rifanno il sito a marzo"</em></li>
+          <li>Tipo <em>bisogno, budget, tempistica, obiezione, contesto</em></li>
+          <li>Riprendi il <em>data facoltativa, diventa un promemoria</em></li>
+          <li>Valido fino a <em>i fatti vecchi scadono</em></li>
+          <li>Fonte <em>email, meeting, nota, senza nome</em></li>
+        </ul>
+        <div class="rel">→ Azienda · Persona · Progetto</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="group">
+    <h4>Opportunità proattive · nuovo</h4>
+    <div class="entities">
+      <article class="entity">
+        <header><h3>Servizi</h3><span class="note">catalogo Somaspace</span></header>
+        <ul class="fields">
+          <li>Nome, descrizione, data di lancio</li>
+          <li>Per chi è <em>categorie, segmenti, bisogni</em></li>
+          <li>Stato <em>Nuovo / Attivo / Ritirato</em></li>
+        </ul>
+        <div class="rel">Parte dai 7 servizi già usati negli Interessi</div>
+      </article>
+      <article class="entity">
+        <header><h3>Bandi</h3><span class="note">a mano o trovati dall'agente</span></header>
+        <ul class="fields">
+          <li>Nome, ente, link</li>
+          <li>Scadenza, importo</li>
+          <li>Requisiti, settori ammessi</li>
+          <li>Origine <em>inserito / trovato dall'agente</em></li>
+        </ul>
+        <div class="rel">→ Suggerimenti</div>
+      </article>
+      <article class="entity">
+        <header><h3>Suggerimenti</h3><span class="note">chi contattare e perché</span></header>
+        <ul class="fields">
+          <li>Azienda o persona</li>
+          <li>Motivo <em>servizio, bando, segnale, dormiente</em></li>
+          <li>Perché proprio loro <em>una riga</em></li>
+          <li>Stato <em>Nuovo / Accettato / Scartato</em></li>
+        </ul>
+        <div class="rel">Accettato → bozza in Gmail, opportunità facoltativa</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="tech" aria-label="Tabelle tecniche">
+    <span><b>Utenti e ruoli</b> oggi solo Fondatore</span>
+    <span><b>Caselle collegate</b> chiavi cifrate, una per utente</span>
+    <span><b>Impostazioni</b> cadenze, orari, domini esclusi</span>
+    <span><b>Log agente</b> ogni azione automatica</span>
+    <span><b>Stato sync</b> fino a dove ha letto ogni casella</span>
+    <span><b>Indirizzi scartati</b> non più proposti</span>
+  </div>
+</section>
+
+<section id="flussi" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Flussi principali</div>
+    <h2>Cosa succede, passo per passo</h2>
+  </div>
+  <div class="flows">
+    <article class="flow">
+      <div><div class="when">A fine meeting</div><h3>Dopo un meeting su Meet <span class="badge new">nuovo</span></h3></div>
+      <ol class="steps">
+        <li><div>Il meeting finisce e la trascrizione arriva su Drive</div></li>
+        <li><div>Claude estrae sintesi, decisioni, prossimi passi, fatti e segnali</div></li>
+        <li><div>Collega tutto ad azienda, persone e progetto o deal giusto</div></li>
+        <li><div>Propone i task con l'assegnatario e la scadenza emersi nel meeting</div></li>
+        <li><div>Aggiorna lo stato del progetto e mette in Oggi la prossima mossa, ad esempio "manda il preventivo entro venerdì"</div></li>
+      </ol>
+      <p class="foot">I task proposti si accettano, si modificano o si scartano da Da approvare.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">Dopo una chiamata</div><h3>Una chiamata con un lead <span class="badge new">nuovo</span></h3></div>
+      <ol class="steps">
+        <li><div>Chiudi la chiamata e dal telefono registri una nota vocale di un minuto, oppure carichi l'audio</div></li>
+        <li><div>Il sistema la trascrive e Claude la analizza</div></li>
+        <li><div>Se il lead è nuovo propone persona, azienda e opportunità</div></li>
+        <li><div>Registra la chiamata, propone i task e ti dice cosa fare ora</div></li>
+        <li><div>Se serve, prepara già la bozza di follow-up in Gmail</div></li>
+      </ol>
+      <p class="foot">La nota vocale è la tua voce: nessun consenso da chiedere. Per registrare la chiamata intera va avvisato l'interlocutore.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">Quando inserite un servizio o arriva un bando</div><h3>Nuovo servizio o bando <span class="badge new">nuovo</span></h3></div>
+      <ol class="steps">
+        <li><div>Inserite il servizio o il bando, oppure l'agente trova un bando nella ricerca settimanale</div></li>
+        <li><div>Il sistema lo confronta con tutte le aziende: categoria, interessi, fatti, deal persi per tempistica, clienti dormienti</div></li>
+        <li><div>Vi mostra una lista ordinata, con il motivo in una riga per ognuno</div></li>
+        <li><div>Scegliete chi contattare e il sistema prepara le bozze nella casella di chi segue quel cliente</div></li>
+      </ol>
+      <p class="foot">Per i bandi tiene conto della scadenza: più è vicina, più sale in coda.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">La mattina del meeting</div><h3>Prima di un meeting <span class="badge new">nuovo</span></h3></div>
+      <ol class="steps">
+        <li><div>Il sistema guarda il tuo calendario del giorno</div></li>
+        <li><div>Per ogni meeting con un cliente prepara un briefing: chi sono, storia, ultime decisioni, task aperti, deal in corso</div></li>
+        <li><div>Aggiunge cosa potresti proporre: servizi adatti, bandi aperti, segnali in sospeso</div></li>
+      </ol>
+      <p class="foot">Lo trovi in Oggi e nel digest delle 8.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">Ogni ora</div><h3>Arriva un'email</h3></div>
+      <ol class="steps">
+        <li><div>Il sync legge solo i messaggi nuovi della tua casella</div></li>
+        <li><div>Toglie i domini interni, le newsletter e gli indirizzi esclusi</div></li>
+        <li><div>Cerca mittente e destinatari tra le People
+          <div class="fork"><span><b>Trovato:</b> salva la sintesi nel tuo spazio privato e aggiorna l'ultimo contatto</span><span><b>Sconosciuto:</b> lo propone in Da approvare, mai direttamente nel CRM</span></div></div></li>
+        <li><div>Estrae i fatti di lavoro e li condivide con il team, senza dire da quale casella arrivano</div></li>
+        <li><div>Collega il thread a un deal o a un progetto aperto e ricalcola il prossimo follow-up</div></li>
+      </ol>
+      <p class="foot">Propone solo indirizzi con almeno uno scambio in entrambe le direzioni.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">Giorni lavorativi, 8:00</div><h3>La mattina</h3></div>
+      <ol class="steps">
+        <li><div>Costruisce la coda: follow-up scaduti, task in scadenza, segnali da riprendere</div></li>
+        <li><div>Applica le regole: Rimanda a vince sempre, un solo canale per persona</div></li>
+        <li><div>Prepara fino a 15 bozze nella tua Gmail, prima le più in ritardo</div></li>
+        <li><div>Prepara i briefing dei meeting di oggi</div></li>
+        <li><div>Manda il digest: Ti hanno scritto, Meeting di oggi, Task, Preventivi, Caldi, Freddi, Opportunità suggerite, Da approvare</div></li>
+      </ol>
+      <p class="foot">Ognuno riceve il suo. Se non c'è niente da fare, non parte.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">Ogni lunedì</div><h3>Salute dei progetti <span class="badge new">nuovo</span></h3></div>
+      <ol class="steps">
+        <li><div>Per ogni progetto attivo guarda task in ritardo, giorni senza contatto con il cliente, decisioni senza un task</div></li>
+        <li><div>Assegna verde, giallo o rosso e scrive lo stato in due righe</div></li>
+        <li><div>Per gialli e rossi suggerisce cosa fare</div></li>
+      </ol>
+      <p class="foot">Così vedete in un colpo d'occhio dove siete messi su ogni cliente.</p>
+    </article>
+    <article class="flow">
+      <div><div class="when">Alla creazione</div><h3>Nuova azienda</h3></div>
+      <ol class="steps">
+        <li><div>Scrivi solo il nome</div></li>
+        <li><div>Claude cerca sul web. Se trova più aziende con quel nome, ti chiede quale</div></li>
+        <li><div>Propone descrizione, nazione, sito, LinkedIn, dominio e categoria, con le fonti</div></li>
+        <li><div>I dati partono come Da verificare e tu li confermi</div></li>
+      </ol>
+      <p class="foot">L'agente non sovrascrive mai un campo che hai compilato tu.</p>
+    </article>
+
+    <article class="flow deal">
+      <div><div class="when">Opportunità In progress</div><h3>La sequenza del preventivo</h3></div>
+      <div class="stages"><span class="stage">Lead</span><span class="arrow">→</span><span class="stage">In progress</span><span class="arrow">→</span><span class="stage won">Vinta</span><span class="arrow">o</span><span class="stage lost">Persa</span></div>
+      <div class="scale-box">
+        <svg viewBox="0 0 640 140" role="img" aria-label="Bozze di follow-up a 3, 7, 14 e 30 giorni dall'invio del preventivo, in scala">
+          <line class="sv-track" x1="40" y1="66" x2="600" y2="66"/>
+          <line class="sv-tick" x1="133.3" y1="62" x2="133.3" y2="70"/>
+          <line class="sv-tick" x1="226.7" y1="62" x2="226.7" y2="70"/>
+          <line class="sv-tick" x1="320" y1="62" x2="320" y2="70"/>
+          <line class="sv-tick" x1="413.3" y1="62" x2="413.3" y2="70"/>
+          <line class="sv-tick" x1="506.7" y1="62" x2="506.7" y2="70"/>
+          <circle class="sv-dot sv-dot0" cx="40" cy="66" r="6"/>
+          <circle class="sv-dot" cx="96" cy="66" r="6"/>
+          <circle class="sv-dot" cx="170.7" cy="66" r="6"/>
+          <circle class="sv-dot" cx="301.3" cy="66" r="6"/>
+          <circle class="sv-dot" cx="600" cy="66" r="6"/>
+          <text class="sv-day" x="40" y="96">giorno 0</text>
+          <text class="sv-lbl" x="40" y="113">Invio preventivo</text>
+          <text class="sv-day" x="96" y="30" text-anchor="middle">+3 giorni</text>
+          <text class="sv-lbl" x="96" y="47" text-anchor="middle">Conferma arrivo</text>
+          <text class="sv-day" x="170.7" y="96" text-anchor="middle">+7 giorni</text>
+          <text class="sv-lbl" x="170.7" y="113" text-anchor="middle">Proposta di una call</text>
+          <text class="sv-day" x="301.3" y="30" text-anchor="middle">+14 giorni</text>
+          <text class="sv-lbl" x="301.3" y="47" text-anchor="middle">Valore aggiunto</text>
+          <text class="sv-day" x="600" y="96" text-anchor="end">+30 giorni</text>
+          <text class="sv-lbl" x="600" y="113" text-anchor="end">Chiusura cortese</text>
+          <text class="sv-grid" x="40" y="134">tacche ogni 5 giorni</text>
+        </svg>
+      </div>
+      <div class="outcomes">
+        <div><b>Il cliente risponde</b>La voce esce dai follow-up e va in Ti hanno scritto. Se la conversazione si ferma, torna in coda 7 giorni dopo, dal passo in cui era.</div>
+        <div><b>Dopo il passo 4</b>Nessuna bozza. L'app chiede: Persa per nessuna risposta, oppure Rimanda a una data.</div>
+        <div><b>Vinta</b>Chiede il valore finale, apre il progetto con i primi task suggeriti, e l'azienda diventa Cliente. Il progetto non riporta gli importi.</div>
+      </div>
+      <p class="foot">Giorni in scala. Se la persona è referente di un deal In progress riceve solo questa sequenza, e il follow-up caldo o freddo si ferma.</p>
+    </article>
+  </div>
+</section>
+
+<section id="fasi" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Fasi di sviluppo</div>
+    <h2>L'ordine in cui lo costruiamo</h2>
+    <p class="lede">Prima quello che vi fa lavorare ogni giorno, poi l'intelligenza che ci si appoggia sopra. Ogni fase si chiude solo quando il criterio è verificato con voi.</p>
+  </div>
+  <div class="lanes-box">
+    <div class="lanes" role="img" aria-label="Fasi su due binari: la tecnica fa le fasi 0 e 1 mentre il design prepara stile e bozze, poi si prosegue insieme dalla fase 2 alla 8">
+      <div class="ll">Tecnica</div>
+      <div class="ph t"><em>0</em>Fondamenta</div>
+      <div class="ph t"><em>1</em>Dati</div>
+      <div class="ph n"><em>2</em>App base</div>
+      <div class="ph n"><em>3</em>Email e privacy</div>
+      <div class="ph n"><em>4</em>Follow-up</div>
+      <div class="ph n"><em>5</em>Meeting</div>
+      <div class="ph n"><em>6</em>Proattività</div>
+      <div class="ph n"><em>7</em>Agenti MCP</div>
+      <div class="ph n"><em>8</em>Taratura</div>
+      <div class="ll">Design</div>
+      <div class="ph d" style="grid-column:2 / span 2"><em>in parallelo</em>Riferimenti Attio, stile, bozze</div>
+      <div class="gate">da qui serve il design approvato</div>
+    </div>
+  </div>
+
+  <div class="phases">
+    <div class="phase">
+      <div class="id">0</div>
+      <div class="what"><h3>Fondamenta</h3><p>Account dei servizi, repository, dominio, progetto Supabase in UE, login Google, ruoli e permessi (attivo solo Fondatore), struttura del codice.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Entra solo chi è nella lista, e ognuno vede solo quello che il suo ruolo permette.</div>
+    </div>
+    <div class="phase">
+      <div class="id">1</div>
+      <div class="what"><h3>Dati e migrazione</h3><p>Prima di tutto l'export CSV completo su Drive. Poi schema del database, import da AZIENDE, CONTATTI, OPPORTUNITÀ, EVENTI e PROGETTI, nuovi database specchio in Notion, vecchi rinominati "(archivio)".</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Righe uguali tra vecchio e nuovo, controlli a campione superati, le 10 opportunità e i progetti corretti.</div>
+    </div>
+    <div class="phase">
+      <div class="id">D</div>
+      <div class="what"><h3>Design <span class="badge par">in parallelo a 0 e 1</span></h3><p>Riferimenti visivi da Attio, sistema visivo, bozze di Oggi, lista Companies, scheda cliente, pipeline, progetto con i suoi task.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Avete approvato le bozze delle cinque schermate.</div>
+    </div>
+    <div class="phase">
+      <div class="id">2</div>
+      <div class="what"><h3>App base</h3><p>Companies, People, Opportunità, Progetti e Task con sotto-task, schede con timeline, pipeline con drag and drop, ricerca Cmd+K, arricchimento, Eventi.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Lavorate una settimana dall'app, clienti e progetti, senza aprire Notion.</div>
+    </div>
+    <div class="phase">
+      <div class="id">3</div>
+      <div class="what"><h3>Email, calendario e privacy</h3><p>Ogni fondatore collega la sua casella. Interazioni private, fatti condivisi senza fonte, pagina "cosa ha condiviso la mia casella", coda Da approvare, recupero degli ultimi 12 mesi, forza della relazione.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Un'email compare entro un'ora senza doppioni, e nessuno vede le email degli altri.</div>
+    </div>
+    <div class="phase">
+      <div class="id">4</div>
+      <div class="what"><h3>Follow-up e digest</h3><p>Calcolo delle date, bozze in Gmail, schermata Oggi, proposte caldo o freddo, digest delle 8 per ognuno.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Passano tutti i test di accettazione della specifica.</div>
+    </div>
+    <div class="phase">
+      <div class="id">5</div>
+      <div class="what"><h3>Meeting e chiamate <span class="badge new">nuova</span></h3><p>Trascrizioni di Meet da Drive, nota vocale dall'app, caricamento audio, analisi con task proposti, briefing prima dei meeting, salute dei progetti.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Dopo un meeting reale trovate sintesi, decisioni e task proposti giusti entro pochi minuti.</div>
+    </div>
+    <div class="phase">
+      <div class="id">6</div>
+      <div class="what"><h3>Opportunità proattive <span class="badge new">nuova</span></h3><p>Catalogo dei servizi, bandi inseriti a mano e ricerca settimanale di bandi nuovi, abbinamento con i clienti, segnali con data, clienti dormienti.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Su un servizio o un bando di prova, la lista proposta vi sembra sensata e le bozze sono utilizzabili.</div>
+    </div>
+    <div class="phase">
+      <div class="id">7</div>
+      <div class="what"><h3>Agenti in chat <span class="badge new">nuova</span></h3><p>Server MCP collegato a Claude Desktop e claude.ai, con i permessi di chi lo usa e il log. Si può anticipare subito dopo la fase 2.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Chiedete "chi devo sentire oggi?" e la risposta coincide con la coda Oggi.</div>
+    </div>
+    <div class="phase">
+      <div class="id">8</div>
+      <div class="what"><h3>Taratura</h3><p>Dopo un mese d'uso: soglie, cadenze, qualità di bozze e analisi dei meeting, precisione degli abbinamenti, costi reali e tetto di spesa.</p></div>
+      <div class="done"><span class="eyebrow">Si chiude quando</span>Revisione fatta con voi.</div>
+    </div>
+  </div>
+</section>
+
+<section id="serve" class="sec">
+  <div class="sec-head">
+    <div class="eyebrow">Cosa serve da voi</div>
+    <h2>Per partire e per andare avanti</h2>
+    <p class="lede">Gli account vanno creati a nome Somaspace con la vostra fatturazione: vi guido passo passo, ma iscrizione e pagamenti li fate voi.</p>
+  </div>
+  <div class="needs">
+    <div class="need">
+      <h3>Per la fase 0</h3>
+      <ul class="first">
+        <li><div>OK di Michele sul nuovo disegno<span>Architettura, progetti e task, privacy tra caselle</span></div></li>
+        <li><div>Account GitHub, Vercel, Supabase, Trigger.dev, Resend, Anthropic</div></li>
+        <li><div>Progetto Google Cloud nel Workspace Somaspace<span>App OAuth interna</span></div></li>
+        <li><div>Accesso al DNS di somaspaceagency.com</div></li>
+        <li><div>Lista delle email autorizzate al login</div></li>
+        <li><div>Integrazione Notion interna<span>Accesso ai database del CRM e a PROGETTI</span></div></li>
+      </ul>
+    </div>
+    <div class="need">
+      <h3>Per il design</h3>
+      <ul>
+        <li><div>Screenshot di Attio<span>Lista, scheda, pipeline, ricerca, e quello che vi piace di più</span></div></li>
+        <li><div>Elementi del brand Somaspace<span>Logo, colori, font, se volete che il CRM li riprenda</span></div></li>
+        <li><div>Come gestite oggi un progetto<span>Anche uno strumento a cui vi ispirate per i task</span></div></li>
+      </ul>
+    </div>
+    <div class="need">
+      <h3>Più avanti</h3>
+      <ul>
+        <li><div>Mappatura da Settore a Categorie<span>Fase 1</span></div></li>
+        <li><div>Struttura attuale di PROGETTI in Notion<span>Fase 1 · campi, stati, eventuali task già presenti</span></div></li>
+        <li><div>Tetto di spesa mensile per Claude API<span>Fase 3</span></div></li>
+        <li><div>OK su LinkedIn e WhatsApp registrati a mano<span>Fase 3</span></div></li>
+        <li><div>10-20 email di Michele come riferimento di stile<span>Fase 4</span></div></li>
+        <li><div>Verifica che il piano Workspace includa le trascrizioni di Meet<span>Fase 5</span></div></li>
+        <li><div>Catalogo dei servizi e fonti di bandi da tenere d'occhio<span>Fase 6 · ad esempio ESA, ASI, programmi UE e regionali</span></div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>Basato su "CRM Somaspace: specifica tecnica" (Michele, 24 ottobre 2026) e sulle decisioni del 3 novembre 2026. Le stime di costo vanno verificate sui listini ufficiali prima di attivare i servizi.</footer>
+
+</div>
