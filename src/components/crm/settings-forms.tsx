@@ -43,10 +43,9 @@ export function FollowupSettingsForm({ value }: { value: FollowupSettings }) {
       const res = await saveFollowupSettings({
         warmDays: n("warmDays"),
         coldDays: n("coldDays"),
-        quoteSequence: [n("q1"), n("q2"), n("q3"), n("q4")],
+        quoteReminderDays: n("quoteReminderDays"),
+        quoteMaxReminders: n("quoteMaxReminders"),
         staleLeadDays: n("staleLeadDays"),
-        resumeAfterConversationDays: n("resume"),
-        minGapDays: n("minGap"),
         maxDraftsPerDay: n("maxDrafts"),
       });
       if (res.ok) toast.success("Impostazioni salvate, date di follow-up ricalcolate");
@@ -61,29 +60,22 @@ export function FollowupSettingsForm({ value }: { value: FollowupSettings }) {
       <Row id="cold" label="Cadenza Freddo" hint="Dopo quanti giorni dall'ultimo contatto">
         <DaysInput id="cold" name="coldDays" value={value.coldDays} />
       </Row>
-      <Row id="q1" label="Sequenza preventivi" hint="Giorni dall'invio per i 4 passi">
-        <span className="flex items-center gap-1.5">
-          {value.quoteSequence.map((d, i) => (
-            <Input
-              key={i}
-              id={`q${i + 1}`}
-              name={`q${i + 1}`}
-              type="number"
-              min={1}
-              defaultValue={d}
-              aria-label={`Passo ${i + 1}`}
-              className="h-8 w-14 text-right tabular-nums"
-              required
-            />
-          ))}
-          <span className="w-12 text-xs text-muted-foreground">giorni</span>
+      <Row id="quoteReminderDays" label="Promemoria preventivo" hint="Se il cliente non risponde: giorni dopo l'ultimo contatto (invio, tua email)">
+        <DaysInput id="quoteReminderDays" name="quoteReminderDays" value={value.quoteReminderDays} />
+      </Row>
+      <Row id="quoteMaxReminders" label="Chiedi l'esito dopo" hint="Promemoria senza risposta prima di chiedere Persa o Rimanda">
+        <span className="flex items-center gap-2">
+          <Input
+            id="quoteMaxReminders"
+            name="quoteMaxReminders"
+            type="number"
+            min={1}
+            defaultValue={value.quoteMaxReminders}
+            className="h-8 w-20 text-right tabular-nums"
+            required
+          />
+          <span className="w-12 text-xs text-muted-foreground">volte</span>
         </span>
-      </Row>
-      <Row id="resume" label="Ripresa dopo una risposta" hint="Se la conversazione si ferma, si riprende dopo">
-        <DaysInput id="resume" name="resume" value={value.resumeAfterConversationDays} />
-      </Row>
-      <Row id="minGap" label="Distanza minima tra due follow-up" hint="Anche se un passo è in ritardo">
-        <DaysInput id="minGap" name="minGap" value={value.minGapDays} />
       </Row>
       <Row id="stale" label="Lead fermo dopo" hint="Senza preventivo inviato">
         <DaysInput id="stale" name="staleLeadDays" value={value.staleLeadDays} />

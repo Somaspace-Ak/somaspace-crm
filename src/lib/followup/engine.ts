@@ -8,11 +8,10 @@ import { addDays, daysBetween, maxDate, type IsoDate } from "./dates";
 export interface FollowupSettings {
   warmDays: number;
   coldDays: number;
-  quoteSequence: number[];
-  /** Regola 4: mai prima di N giorni dall'ultimo follow-up */
-  minGapDays: number;
-  /** Regola 5: dopo una conversazione, si riprende N giorni dopo l'ultima email */
-  resumeAfterConversationDays: number;
+  /** Preventivo senza risposta: un promemoria N giorni dopo l'ultimo contatto (invio, nostra email, Fatto) */
+  quoteReminderDays: number;
+  /** Dopo N promemoria senza risposta l'app chiede Persa o Rimanda */
+  quoteMaxReminders: number;
   /** Regola 7: un lead senza preventivo da più di N giorni è un promemoria */
   staleLeadDays: number;
   maxDraftsPerDay: number;
@@ -21,9 +20,8 @@ export interface FollowupSettings {
 export const DEFAULT_SETTINGS: FollowupSettings = {
   warmDays: 30,
   coldDays: 90,
-  quoteSequence: [3, 7, 14, 30],
-  minGapDays: 3,
-  resumeAfterConversationDays: 7,
+  quoteReminderDays: 5,
+  quoteMaxReminders: 6,
   staleLeadDays: 7,
   maxDraftsPerDay: 15,
 };
@@ -94,7 +92,7 @@ export function personFollowup(
 export interface OpportunityFollowupInput {
   stage: "lead" | "in_progress" | "vinta" | "persa";
   quoteSentOn: IsoDate | null;
-  /** Quanti passi della sequenza sono stati fatti (0-4) */
+  /** Quanti promemoria sono stati fatti: con "Fatto" o con una nostra email dopo il preventivo */
   step: number;
   lastFollowupOn: IsoDate | null;
   snoozeUntil: IsoDate | null;
@@ -113,7 +111,7 @@ export type OpportunityFollowupState =
 export interface OpportunityFollowup {
   state: OpportunityFollowupState;
   nextOn: IsoDate | null;
-  /** Il passo che partirà alla prossima data (1-4) */
+  /** Il promemoria che partirà alla prossima data (1, 2, ...) */
   nextStep: number | null;
 }
 
@@ -124,28 +122,23 @@ export function opportunityFollowup(
   if (o.stage !== "in_progress") return { state: "non_attiva", nextOn: null, nextStep: null };
   if (!o.quoteSentOn) return { state: "senza_data_invio", nextOn: null, nextStep: null };
 
+  // Rimanda a: la voce sparisce fino a quella data, poi torna in Oggi
   const snooze = activeSnooze(o.snoozeUntil, o.lastOutboundOn);
-  if (snooze) return { state: "rimanda", nextOn: snooze, nextStep: Math.min(o.step + 1, s.quoteSequence.length) };
+  if (snooze) return { state: "rimanda", nextOn: snooze, nextStep: Math.min(o.step + 1, s.quoteMaxReminders) };
 
+  // Il cliente ha risposto al preventivo e noi no: subito in "Ti hanno scritto", finché non rispondiamo
   const repliedAfterQuote = o.lastInboundOn !== null && o.lastInboundOn >= o.quoteSentOn;
   if (repliedAfterQuote && awaitingOurReply(o.lastInboundOn, o.lastOutboundOn)) {
     return { state: "attesa_risposta", nextOn: null, nextStep: null };
   }
 
-  // Dopo il passo 4 niente bozza: l'app chiede Persa o Rimanda
-  if (o.step >= s.quoteSequence.length) return { state: "chiedi_esito", nextOn: null, nextStep: null };
+  // Troppi promemoria senza risposta: l'app chiede Persa o Rimanda
+  if (o.step >= s.quoteMaxReminders) return { state: "chiedi_esito", nextOn: null, nextStep: null };
 
-  const candidates: (IsoDate | null)[] = [addDays(o.quoteSentOn, s.quoteSequence[o.step])];
-  // Regola 4: passi in ritardo, mai prima di 3 giorni dall'ultimo follow-up
-  if (o.lastFollowupOn) candidates.push(addDays(o.lastFollowupOn, s.minGapDays));
-  // Regola 5: c'è stata una conversazione dopo l'ultimo passo, si riprende 7 giorni dopo l'ultima email
-  const since = o.lastFollowupOn ?? o.quoteSentOn;
-  if (o.lastInboundOn && o.lastInboundOn > since) {
-    const lastEmail = maxDate(o.lastInboundOn, o.lastOutboundOn)!;
-    candidates.push(addDays(lastEmail, s.resumeAfterConversationDays));
-  }
-
-  return { state: "in_sequenza", nextOn: maxDate(...candidates), nextStep: o.step + 1 };
+  // Nessuna risposta: un promemoria N giorni dopo l'ultimo contatto nostro (invio, email, Fatto)
+  const ourLast = o.lastOutboundOn && o.lastOutboundOn >= o.quoteSentOn ? o.lastOutboundOn : null;
+  const lastTouch = maxDate(o.quoteSentOn, o.lastFollowupOn, ourLast)!;
+  return { state: "in_sequenza", nextOn: addDays(lastTouch, s.quoteReminderDays), nextStep: o.step + 1 };
 }
 
 /**
@@ -163,7 +156,7 @@ export function applyOutboundEmail(
     return { ...updated, step: o.step + 1, lastFollowupOn: sentOn };
   }
   if (current.state === "rimanda" && current.nextOn && sentOn >= current.nextOn) {
-    return { ...updated, step: Math.min(o.step + 1, s.quoteSequence.length), lastFollowupOn: sentOn, snoozeUntil: null };
+    return { ...updated, step: Math.min(o.step + 1, s.quoteMaxReminders), lastFollowupOn: sentOn, snoozeUntil: null };
   }
   return updated;
 }

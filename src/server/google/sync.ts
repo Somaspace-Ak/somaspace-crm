@@ -129,8 +129,11 @@ async function recordMessages(db: Db, userId: string, token: string, ctx: Ctx, i
     let companyId: string | null = null;
     for (const a of external) {
       let p = ctx.personByEmail.get(a.email);
-      if (!p && proposeNew && !outbound && a.email === from.email && !isAutomated(a.email)) {
-        const domainCompany = isFreeMail(a.email) ? null : (ctx.companyByDomain.get(domainOf(a.email)) ?? null);
+      const domainCompany = isFreeMail(a.email) ? null : (ctx.companyByDomain.get(domainOf(a.email)) ?? null);
+      // Un indirizzo nuovo di un'azienda che conosciamo è quasi sempre un contatto: in Da approvare,
+      // sia che ci scriva sia che gli scriviamo noi. Uno sconosciuto di un'azienda nuova solo se ci scrive.
+      const propose = proposeNew ? (outbound ? Boolean(domainCompany) : a.email === from.email || Boolean(domainCompany)) : Boolean(domainCompany);
+      if (!p && propose && !isAutomated(a.email)) {
         const [created] = await db
           .insert(people)
           .values({ ...splitName(a), email: a.email, companyId: domainCompany, ownerId: userId, status: "da_approvare" })
@@ -142,11 +145,13 @@ async function recordMessages(db: Db, userId: string, token: string, ctx: Ctx, i
           proposed++;
         }
       }
+      companyId ??= domainCompany;
       if (!p || p.status === "archiviato") continue;
       personIds.push(p.id);
-      companyId ??= p.companyId;
+      companyId = p.companyId ?? companyId;
     }
-    if (!personIds.length) continue;
+    // Senza persone ma con un'azienda nota (dal dominio) l'email conta comunque per l'azienda
+    if (!personIds.length && !companyId) continue;
 
     const [row] = await db
       .insert(interactions)
@@ -166,10 +171,12 @@ async function recordMessages(db: Db, userId: string, token: string, ctx: Ctx, i
       .onConflictDoNothing()
       .returning({ id: interactions.id });
     if (!row) continue;
-    await db
-      .insert(interactionPeople)
-      .values([...new Set(personIds)].map((personId) => ({ interactionId: row.id, personId })))
-      .onConflictDoNothing();
+    if (personIds.length) {
+      await db
+        .insert(interactionPeople)
+        .values([...new Set(personIds)].map((personId) => ({ interactionId: row.id, personId })))
+        .onConflictDoNothing();
+    }
     personIds.forEach((id) => touched.add(id));
     recorded++;
   }
@@ -229,7 +236,8 @@ async function syncGmail(db: Db, acc: Account, token: string, ctx: Ctx, started:
     }
   }
 
-  if (touched.size) {
+  // Anche email registrate solo sull'azienda aggiornano l'ultimo contatto e i promemoria dei deal
+  if (touched.size || r1.recorded + r2.recorded > 0) {
     await refreshLastInteractions(db, [...touched]);
     await recomputeFollowups(db, { people: [...touched] });
   }

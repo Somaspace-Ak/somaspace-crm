@@ -125,7 +125,7 @@ async function Today({ searchParams }: PageProps<"/">) {
                   />
                   <ul>
                     {shown.map((e) => (
-                      <QueueRow key={`${e.kind}-${e.id}`} e={e} showOwner={scope === "team"} />
+                      <QueueRow key={`${e.kind}-${e.id}`} e={e} showOwner={scope === "team"} maxReminders={data.settings.quoteMaxReminders} />
                     ))}
                   </ul>
                   {items.length > PREVIEW ? (
@@ -292,7 +292,7 @@ function hintFor(section: TodayEntry["section"], s: FollowupSettings) {
     case "ti_hanno_scritto":
       return "aspettano una tua risposta";
     case "preventivi":
-      return `passi a ${s.quoteSequence.join(", ")} giorni`;
+      return `ogni ${s.quoteReminderDays} giorni finché non risponde`;
     case "caldi":
       return `cadenza ${s.warmDays} giorni`;
     case "freddi":
@@ -311,7 +311,7 @@ function BriefRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function QueueRow({ e, showOwner }: { e: TodayEntry; showOwner: boolean }) {
+function QueueRow({ e, showOwner, maxReminders }: { e: TodayEntry; showOwner: boolean; maxReminders: number }) {
   const late = e.daysLate > 0;
   return (
     <li className="flex min-h-14 flex-col gap-2 border-b px-4 py-2.5 hover:bg-muted sm:flex-row sm:items-center sm:gap-3">
@@ -337,7 +337,7 @@ function QueueRow({ e, showOwner }: { e: TodayEntry; showOwner: boolean }) {
       <div className="flex items-center gap-3 pl-9 sm:pl-0">
         {e.section === "preventivi" && e.step ? (
           <span className="hidden w-24 flex-col gap-1 md:flex">
-            <StepBar step={Math.min(e.step, 4)} />
+            <StepBar step={Math.min(e.step, maxReminders)} total={maxReminders} />
           </span>
         ) : null}
         {showOwner && e.ownerName ? <UserAvatar initials={e.ownerName.split(" ").map((w) => w[0]).join("").slice(0, 2)} name={e.ownerName} /> : null}

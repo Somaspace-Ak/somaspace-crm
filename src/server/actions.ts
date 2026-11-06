@@ -21,7 +21,7 @@ import {
 } from "@/db/schema";
 import { addDays, todayInRome } from "@/lib/followup/dates";
 import { formatEuro } from "@/lib/format";
-import { recomputeFollowups } from "./followups";
+import { loadFollowupSettings, recomputeFollowups } from "./followups";
 import { authEnabled } from "@/lib/supabase/config";
 import { requireViewer, VIEWER_COOKIE } from "./session";
 
@@ -69,15 +69,17 @@ export async function markFollowupDone(kind: "persona" | "opportunita", id: stri
   if (kind === "opportunita") {
     const [o] = await db.select().from(opportunities).where(eq(opportunities.id, id));
     if (!o) return;
+    const { quoteMaxReminders } = await loadFollowupSettings(db);
+    const step = Math.min(o.followupStep + 1, quoteMaxReminders);
     await db
       .update(opportunities)
-      .set({ followupStep: Math.min(o.followupStep + 1, 4), lastFollowupOn: today, snoozeUntil: null, draftUrl: null })
+      .set({ followupStep: step, lastFollowupOn: today, snoozeUntil: null, draftUrl: null })
       .where(eq(opportunities.id, id));
     const [i] = await db
       .insert(interactions)
       .values({
         type: "nota",
-        title: `Follow-up passo ${Math.min(o.followupStep + 1, 4)} fatto`,
+        title: `Promemoria ${step} del preventivo fatto`,
         summary: note || "Segnato come fatto dall'app.",
         occurredAt: now,
         visibility: "team",

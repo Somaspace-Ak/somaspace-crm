@@ -21,7 +21,7 @@ const STAGES: Stage[] = ["lead", "in_progress", "vinta", "persa"];
 
 type Pending = { card: PipelineCard; to: Stage } | null;
 
-export function PipelineBoard({ cards: initial, today }: { cards: PipelineCard[]; today: string }) {
+export function PipelineBoard({ cards: initial, today, maxReminders }: { cards: PipelineCard[]; today: string; maxReminders: number }) {
   const [cards, setCards] = useState(initial);
   const [pending, setPending] = useState<Pending>(null);
   const [saving, start] = useTransition();
@@ -65,7 +65,7 @@ export function PipelineBoard({ cards: initial, today }: { cards: PipelineCard[]
             return (
               <Column key={stage} stage={stage} count={col.length} total={total}>
                 {col.map((c) => (
-                  <Card key={c.id} card={c} today={today} disabled={saving} />
+                  <Card key={c.id} card={c} today={today} disabled={saving} maxReminders={maxReminders} />
                 ))}
               </Column>
             );
@@ -102,7 +102,7 @@ function Column({ stage, count, total, children }: { stage: Stage; count: number
   );
 }
 
-function Card({ card, today, disabled }: { card: PipelineCard; today: string; disabled: boolean }) {
+function Card({ card, today, disabled, maxReminders }: { card: PipelineCard; today: string; disabled: boolean; maxReminders: number }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: card.id, disabled });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   const due = card.stage === "in_progress" && card.nextFollowupOn && card.nextFollowupOn <= today;
@@ -130,8 +130,10 @@ function Card({ card, today, disabled }: { card: PipelineCard; today: string; di
       </span>
       {card.stage === "in_progress" ? (
         <div className="flex items-center gap-2">
-          <StepBar step={Math.min(card.step, 4)} />
-          <span className="text-xs text-muted-foreground">Passo {Math.min(card.step, 4)} di 4</span>
+          <StepBar step={Math.min(card.step, maxReminders)} total={maxReminders} />
+          <span className="text-xs text-muted-foreground">
+            Promemoria {Math.min(card.step, maxReminders)} di {maxReminders}
+          </span>
           {card.daysSinceQuote != null ? (
             <Chip tone={due ? "bad" : "neutral"} className="ml-auto h-5">
               {card.daysSinceQuote} g

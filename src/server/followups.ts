@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { interactionPeople, interactions, opportunities, people, settings as settingsTable } from "@/db/schema";
 import { toRomeDate } from "@/lib/followup/dates";
@@ -27,16 +27,11 @@ export async function loadFollowupSettings(db: Db): Promise<FollowupSettings> {
   const [row] = await db.select().from(settingsTable).where(eq(settingsTable.key, "followup"));
   const saved = (row?.value ?? {}) as Partial<FollowupSettings>;
   const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : fallback);
-  const seq =
-    Array.isArray(saved.quoteSequence) && saved.quoteSequence.length === 4 && saved.quoteSequence.every((d) => typeof d === "number" && d > 0)
-      ? saved.quoteSequence
-      : DEFAULT_SETTINGS.quoteSequence;
   return {
     warmDays: num(saved.warmDays, DEFAULT_SETTINGS.warmDays),
     coldDays: num(saved.coldDays, DEFAULT_SETTINGS.coldDays),
-    quoteSequence: seq,
-    minGapDays: num(saved.minGapDays, DEFAULT_SETTINGS.minGapDays),
-    resumeAfterConversationDays: num(saved.resumeAfterConversationDays, DEFAULT_SETTINGS.resumeAfterConversationDays),
+    quoteReminderDays: num(saved.quoteReminderDays, DEFAULT_SETTINGS.quoteReminderDays),
+    quoteMaxReminders: num(saved.quoteMaxReminders, DEFAULT_SETTINGS.quoteMaxReminders),
     staleLeadDays: num(saved.staleLeadDays, DEFAULT_SETTINGS.staleLeadDays),
     maxDraftsPerDay: num(saved.maxDraftsPerDay, DEFAULT_SETTINGS.maxDraftsPerDay),
   };
@@ -71,24 +66,40 @@ async function personEmailDates(db: Db): Promise<Map<string, EmailDates>> {
   );
 }
 
-async function opportunityEmailDates(db: Db): Promise<Map<string, EmailDates>> {
-  const rows = await db
-    .select({
-      opportunityId: interactions.opportunityId,
-      lastIn: sql<Date | null>`max(${interactions.occurredAt}) filter (where ${interactions.type} = 'email_ricevuta')`,
-      lastOut: sql<Date | null>`max(${interactions.occurredAt}) filter (where ${interactions.type} = 'email_inviata')`,
-    })
-    .from(interactions)
-    .where(isNotNull(interactions.opportunityId))
-    .groupBy(interactions.opportunityId);
+/**
+ * Le email di ogni deal aperto: quelle collegate al deal, con il suo referente o con la sua azienda.
+ * Così le email lette da Gmail contano per i promemoria del preventivo senza collegarle a mano.
+ * Conta anche i giorni in cui gli abbiamo scritto dopo l'invio: ognuno vale come un promemoria fatto.
+ */
+async function opportunityEmailDates(db: Db): Promise<Map<string, EmailDates & { sentAfterQuote: number }>> {
+  const res = (await db.execute(sql`
+    select o.id,
+      max(i.occurred_at) filter (where i.type = 'email_ricevuta') as last_in,
+      max(i.occurred_at) filter (where i.type = 'email_inviata') as last_out,
+      count(distinct (i.occurred_at at time zone 'Europe/Rome')::date)
+        filter (where i.type = 'email_inviata' and o.quote_sent_on is not null
+          and (i.occurred_at at time zone 'Europe/Rome')::date > o.quote_sent_on)::int as sent_after_quote
+    from opportunities o
+    join interactions i on i.type in ('email_ricevuta', 'email_inviata') and (
+      i.opportunity_id = o.id
+      or i.company_id = o.company_id
+      or (o.person_id is not null and exists (
+        select 1 from interaction_people ip where ip.interaction_id = i.id and ip.person_id = o.person_id))
+    )
+    where o.stage in ('lead', 'in_progress')
+    group by o.id
+  `)) as unknown as { rows?: Row[] } | Row[];
+  type Row = { id: string; last_in: string | Date | null; last_out: string | Date | null; sent_after_quote: number };
+  const rows: Row[] = Array.isArray(res) ? res : (res.rows ?? []);
 
   return new Map(
     rows.map((r) => [
-      r.opportunityId!,
+      r.id,
       {
-        lastInboundOn: r.lastIn ? toRomeDate(new Date(r.lastIn)) : null,
-        lastOutboundOn: r.lastOut ? toRomeDate(new Date(r.lastOut)) : null,
+        lastInboundOn: r.last_in ? toRomeDate(new Date(r.last_in)) : null,
+        lastOutboundOn: r.last_out ? toRomeDate(new Date(r.last_out)) : null,
         lastInteractionOn: null,
+        sentAfterQuote: Number(r.sent_after_quote ?? 0),
       },
     ]),
   );
@@ -125,14 +136,15 @@ export async function loadFollowupInputs(db: Db): Promise<{
       };
     }),
     opportunities: oppRows.map((o) => {
-      const dates = oDates.get(o.id) ?? emptyDates;
+      const dates = oDates.get(o.id) ?? { ...emptyDates, sentAfterQuote: 0 };
       return {
         id: o.id,
         personId: o.personId,
         createdOn: toRomeDate(o.createdAt),
         stage: o.stage,
         quoteSentOn: o.quoteSentOn,
-        step: o.followupStep,
+        // Promemoria fatti: con "Fatto" o scrivendo al cliente dopo il preventivo
+        step: Math.max(o.followupStep, dates.sentAfterQuote),
         lastFollowupOn: o.lastFollowupOn,
         snoozeUntil: o.snoozeUntil,
         lastInboundOn: dates.lastInboundOn,
@@ -157,7 +169,7 @@ export async function recomputeFollowups(db: Db, ids?: { people?: string[]; oppo
   for (const o of inputs.opportunities) {
     if (ids?.opportunities && !ids.opportunities.includes(o.id)) continue;
     const f = opportunityFollowup(o, settings);
-    await db.update(opportunities).set({ nextFollowupOn: f.nextOn }).where(eq(opportunities.id, o.id));
+    await db.update(opportunities).set({ nextFollowupOn: f.nextOn, followupStep: o.step }).where(eq(opportunities.id, o.id));
   }
 }
 
@@ -181,10 +193,17 @@ export async function refreshLastInteractions(db: Db, personIds?: string[]) {
   for (const r of rows) {
     await db.update(people).set({ lastInteractionAt: new Date(r.last) }).where(eq(people.id, r.personId));
   }
-  // L'azienda prende la data più recente tra le sue persone
+  // L'azienda prende la data più recente tra le sue persone e le interazioni registrate su di lei (email comprese)
   await db.execute(sql`
     update companies c set last_interaction_at = sub.last
-    from (select company_id, max(last_interaction_at) as last from people where company_id is not null group by company_id) sub
-    where sub.company_id = c.id
+    from (
+      select company_id, max(last) as last from (
+        select company_id, max(last_interaction_at) as last from people where company_id is not null group by company_id
+        union all
+        select company_id, max(occurred_at) as last from interactions
+        where company_id is not null and type <> 'modifica_valore' group by company_id
+      ) x group by company_id
+    ) sub
+    where sub.company_id = c.id and sub.last is not null
   `);
 }

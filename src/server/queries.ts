@@ -65,7 +65,9 @@ function reasonFor(i: QueueItem, s: FollowupSettings) {
     case "ti_hanno_scritto":
       return `Ti ha scritto ${i.daysLate === 0 ? "oggi" : i.daysLate === 1 ? "ieri" : `${i.daysLate} giorni fa`}`;
     case "preventivi":
-      return i.askOutcome ? "Sequenza finita senza risposta: Persa o Rimanda?" : `Passo ${i.step} di 4`;
+      return i.askOutcome
+        ? `${s.quoteMaxReminders} promemoria senza risposta: Persa o Rimanda?`
+        : `Promemoria ${i.step} di ${s.quoteMaxReminders}: nessuna risposta da ${s.quoteReminderDays} giorni`;
     case "caldi":
       return `${s.warmDays} giorni dall'ultimo contatto`;
     case "freddi":

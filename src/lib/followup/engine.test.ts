@@ -38,25 +38,25 @@ const quote = (over: Partial<OpportunityFollowupInput> = {}): OpportunityFollowu
 });
 
 describe("preventivo inviato il 1 ottobre, nessuna risposta", () => {
-  it("bozze il 4, l'8, il 15 e il 31 ottobre, poi chiede Persa o Rimanda", () => {
+  it("un promemoria ogni 5 giorni dall'ultimo contatto, poi chiede Persa o Rimanda", () => {
     let o = quote();
     const dates: string[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const f = opportunityFollowup(o);
       expect(f.state).toBe("in_sequenza");
       expect(f.nextStep).toBe(i + 1);
       dates.push(f.nextOn!);
-      // L'utente invia la bozza il giorno stesso
+      // L'utente scrive al cliente il giorno stesso
       o = applyOutboundEmail(o, f.nextOn!);
     }
-    expect(dates).toEqual(["2026-10-04", "2026-10-08", "2026-10-15", "2026-10-31"]);
-    expect(o.step).toBe(4);
+    expect(dates).toEqual(["2026-10-06", "2026-10-11", "2026-10-16", "2026-10-21", "2026-10-26", "2026-10-31"]);
+    expect(o.step).toBe(6);
     expect(opportunityFollowup(o).state).toBe("chiedi_esito");
   });
 
-  it("dopo il passo 4 la voce resta in coda per chiedere l'esito, senza bozza", () => {
+  it("dopo l'ultimo promemoria la voce resta in coda per chiedere l'esito, senza bozza", () => {
     const o: QueueOpportunity = {
-      ...quote({ step: 4, lastFollowupOn: "2026-10-31", lastOutboundOn: "2026-10-31" }),
+      ...quote({ step: 6, lastFollowupOn: "2026-10-31", lastOutboundOn: "2026-10-31" }),
       id: "deal",
       personId: "p1",
       createdOn: "2026-09-20",
@@ -67,18 +67,21 @@ describe("preventivo inviato il 1 ottobre, nessuna risposta", () => {
     expect(pickDrafts(queue)).toHaveLength(0);
   });
 
-  it("un passo in ritardo non parte prima di 3 giorni dall'ultimo follow-up", () => {
-    // Passo 1 inviato in ritardo il 7 ottobre: il passo 2 sarebbe l'8, slitta al 10
-    const f = opportunityFollowup(quote({ step: 1, lastFollowupOn: "2026-10-07", lastOutboundOn: "2026-10-07" }));
-    expect(f.nextOn).toBe("2026-10-10");
+  it("un promemoria fatto in ritardo sposta il successivo a 5 giorni da quel giorno", () => {
+    const f = opportunityFollowup(quote({ step: 1, lastFollowupOn: "2026-10-09", lastOutboundOn: "2026-10-09" }));
+    expect(f.nextOn).toBe("2026-10-14");
+  });
+
+  it("una nostra email al cliente fa ripartire il conto", () => {
+    expect(opportunityFollowup(quote({ lastOutboundOn: "2026-10-04" })).nextOn).toBe("2026-10-09");
   });
 });
 
-describe("il cliente risponde dopo il passo 2", () => {
-  const afterStep2 = quote({ step: 2, lastFollowupOn: "2026-10-08", lastOutboundOn: "2026-10-08" });
+describe("il cliente risponde dopo il secondo promemoria", () => {
+  const afterStep2 = quote({ step: 2, lastFollowupOn: "2026-10-11", lastOutboundOn: "2026-10-11" });
 
-  it("la voce esce dai follow-up ed entra in Ti hanno scritto", () => {
-    const replied = { ...afterStep2, lastInboundOn: "2026-10-10" };
+  it("la voce esce dai promemoria ed entra subito in Ti hanno scritto", () => {
+    const replied = { ...afterStep2, lastInboundOn: "2026-10-12" };
     expect(opportunityFollowup(replied).state).toBe("attesa_risposta");
 
     const queue = buildTodayQueue(
@@ -89,13 +92,18 @@ describe("il cliente risponde dopo il passo 2", () => {
     expect(queue.map((i) => i.section)).toEqual(["ti_hanno_scritto"]);
   });
 
-  it("se nessuno scrive più, torna in coda 7 giorni dopo l'ultima email, al passo 3", () => {
-    let o: OpportunityFollowupInput = { ...afterStep2, lastInboundOn: "2026-10-10" };
-    // Rispondiamo l'11: non è un passo della sequenza
-    o = applyOutboundEmail(o, "2026-10-11");
+  it("rimandata, sparisce fino alla data e poi torna", () => {
+    const replied = { ...afterStep2, lastInboundOn: "2026-10-12", snoozeUntil: "2026-10-20" };
+    const deal = { ...replied, id: "deal", personId: "p1", createdOn: "2026-09-25" };
+    expect(buildTodayQueue("2026-10-15", [], [deal])).toHaveLength(0);
+    expect(buildTodayQueue("2026-10-20", [], [deal])).toHaveLength(1);
+  });
+
+  it("quando rispondiamo, il promemoria successivo è 5 giorni dopo la nostra risposta", () => {
+    let o: OpportunityFollowupInput = { ...afterStep2, lastInboundOn: "2026-10-12" };
+    o = applyOutboundEmail(o, "2026-10-13");
     expect(o.step).toBe(2);
-    const f = opportunityFollowup(o);
-    expect(f).toEqual({ state: "in_sequenza", nextOn: "2026-10-18", nextStep: 3 });
+    expect(opportunityFollowup(o)).toEqual({ state: "in_sequenza", nextOn: "2026-10-18", nextStep: 3 });
   });
 });
 
@@ -126,7 +134,7 @@ describe("relazioni calde e fredde", () => {
       id: "p1",
     };
     expect(personFollowup(p).state).toBe("sospeso_preventivo");
-    const queue = buildTodayQueue("2026-10-05", [p], [{ ...quote(), id: "deal", personId: "p1", createdOn: "2026-09-20" }]);
+    const queue = buildTodayQueue("2026-10-06", [p], [{ ...quote(), id: "deal", personId: "p1", createdOn: "2026-09-20" }]);
     expect(queue).toHaveLength(1);
     expect(queue[0]).toMatchObject({ kind: "opportunita", section: "preventivi", step: 1 });
   });
@@ -148,7 +156,7 @@ describe("Rimanda a", () => {
     expect(buildTodayQueue("2027-01-15", [p], [])).toHaveLength(1);
   });
 
-  it("vince anche sulla sequenza del preventivo", () => {
+  it("vince anche sui promemoria del preventivo", () => {
     const f = opportunityFollowup(quote({ snoozeUntil: "2027-01-15" }));
     expect(f.nextOn).toBe("2027-01-15");
   });
@@ -161,10 +169,10 @@ describe("l'utente invia la bozza", () => {
     expect(after.nextOn).toBe("2026-10-31");
   });
 
-  it("sull'opportunità il passo sale di uno e si calcola la data successiva", () => {
-    const o = applyOutboundEmail(quote(), "2026-10-04");
-    expect(o).toMatchObject({ step: 1, lastFollowupOn: "2026-10-04" });
-    expect(opportunityFollowup(o).nextOn).toBe("2026-10-08");
+  it("sull'opportunità il promemoria sale di uno e il prossimo è 5 giorni dopo", () => {
+    const o = applyOutboundEmail(quote(), "2026-10-06");
+    expect(o).toMatchObject({ step: 1, lastFollowupOn: "2026-10-06" });
+    expect(opportunityFollowup(o).nextOn).toBe("2026-10-11");
   });
 });
 

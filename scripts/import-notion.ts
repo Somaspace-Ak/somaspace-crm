@@ -456,7 +456,7 @@ async function main() {
     ["Brand", "Sito web", "Social e contenuti", "Video e render 3D", "Deck e pitch", "Eventi", "Marketing e lead gen"].map((name) => ({ name })),
   );
   await db.insert(s.settings).values([
-    { key: "followup", value: { warmDays: 30, coldDays: 90, quoteSequence: [3, 7, 14, 30], maxDraftsPerDay: 15 } },
+    { key: "followup", value: { warmDays: 30, coldDays: 90, quoteReminderDays: 5, quoteMaxReminders: 6, maxDraftsPerDay: 15 } },
     { key: "digest", value: { time: "08:00", days: "lun-ven", timezone: "Europe/Rome" } },
     { key: "internal_domains", value: ["somaspaceagency.com"] },
     { key: "categories", value: ["B2B", "Upstream", "Downstream", "Software", "Hardware", "Deep Tech"] },

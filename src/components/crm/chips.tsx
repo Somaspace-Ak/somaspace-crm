@@ -164,11 +164,11 @@ export function CompanyLogo({ name, className }: { name: string; className?: str
   );
 }
 
-/** Barra dei 4 passi della sequenza del preventivo. */
-export function StepBar({ step, className }: { step: number; className?: string }) {
+/** Barra dei promemoria del preventivo: quanti fatti su quanti prima di chiedere l'esito. */
+export function StepBar({ step, total = 6, className }: { step: number; total?: number; className?: string }) {
   return (
-    <span className={cn("inline-flex gap-0.5", className)} aria-label={`Passo ${step} di 4`}>
-      {[1, 2, 3, 4].map((n) => (
+    <span className={cn("inline-flex gap-0.5", className)} aria-label={`Promemoria ${step} di ${total}`}>
+      {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
         <span key={n} className={cn("block h-1 w-3.5 rounded-sm", n <= step ? "bg-foreground" : "bg-border")} />
       ))}
     </span>

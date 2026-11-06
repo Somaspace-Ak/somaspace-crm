@@ -535,14 +535,10 @@ const followupSettingsInput = z
   .object({
     warmDays: days("Cadenza Caldo", 365),
     coldDays: days("Cadenza Freddo", 730),
-    quoteSequence: z.array(days("Passo della sequenza", 365)).length(4, "La sequenza ha 4 passi"),
+    quoteReminderDays: days("Promemoria preventivo", 60),
+    quoteMaxReminders: z.coerce.number().int().min(1, "Almeno 1 promemoria").max(30, "Al massimo 30 promemoria"),
     staleLeadDays: days("Lead fermo", 90),
-    resumeAfterConversationDays: days("Ripresa dopo una risposta", 60),
-    minGapDays: days("Distanza minima tra due follow-up", 30),
     maxDraftsPerDay: z.coerce.number().int().min(1, "Almeno 1 bozza").max(100, "Al massimo 100 bozze"),
-  })
-  .refine((v) => v.quoteSequence.every((d, i) => i === 0 || d > v.quoteSequence[i - 1]), {
-    message: "I passi della sequenza devono essere in ordine crescente",
   })
   .refine((v) => v.warmDays < v.coldDays, { message: "La cadenza Caldo deve essere più breve di quella Freddo" });
 
