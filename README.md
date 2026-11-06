@@ -46,9 +46,9 @@ PGlite accetta un solo processo alla volta: ferma `pnpm dev` prima di lanciare `
 
 ## Messa online (Vercel + Supabase)
 
-Online l'app usa Supabase (Postgres a Francoforte) e chiede il login. In locale, senza variabili, resta tutto come sopra.
+Online l'app usa Supabase (Postgres a Londra, `eu-west-2`) e chiede il login. In locale, senza variabili, resta tutto come sopra.
 
-1. **Supabase**: nuovo progetto, regione *Central EU (Frankfurt)*. Salva la password del database.
+1. **Supabase**: nuovo progetto, regione *West EU (London)*. Salva la password del database. Il Regno Unito è fuori dall'UE ma ha la decisione di adeguatezza: va citato nell'informativa privacy.
 2. **Variabili**: copia `.env.example` in `.env.supabase` e compila `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Non in `.env.local`: `pnpm dev` lo leggerebbe e l'app in locale passerebbe al database online.
 3. **Database**, con `pnpm dev` fermo:
    ```bash
@@ -58,7 +58,7 @@ Online l'app usa Supabase (Postgres a Francoforte) e chiede il login. In locale,
    La migrazione `0003_lock_tables` chiude tutte le tabelle all'API REST di Supabase: l'app le legge solo dal server. Ogni tabella nuova va chiusa allo stesso modo.
 4. **Utenti**: in Supabase → Authentication → Users, *Add user → Create new user* per ogni fondatore, con *Auto Confirm User*. Entra solo chi è anche nella tabella `users` del CRM con `active = true`.
 5. **Google** (facoltativo, consigliato): attiva il provider Google in Supabase con un client OAuth di Google Cloud, aggiungi `https://<dominio>/auth/callback` tra gli URL di redirect in Supabase → Authentication → URL Configuration, poi `NEXT_PUBLIC_AUTH_GOOGLE=1`. Lo stesso progetto Google Cloud servirà per Gmail e Calendar.
-6. **Vercel**: importa il repository GitHub, incolla le stesse variabili in Settings → Environment Variables, deploy. Le funzioni girano a Francoforte (`vercel.json`), vicino al database.
+6. **Vercel**: importa il repository GitHub, incolla le stesse variabili in Settings → Environment Variables, deploy. Le funzioni girano a Londra (`vercel.json`, `lhr1`), nella stessa città del database: se il database cambia regione, va cambiata anche questa.
 
 ## Stato del prototipo
 
