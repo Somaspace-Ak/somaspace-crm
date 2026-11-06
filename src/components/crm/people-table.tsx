@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Building2 } from "lucide-react";
+import { BellOff, Building2, Check, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ModeChip, StrengthBar, UserAvatar } from "./chips";
 import { BulkOwnerBar, ownerOptions, SelectCell, SelectHeader, useSelection } from "./bulk-actions";
 import { countBy, FilterSelect, SortHeader, TableSearch, useSortedRows, ViewTabs } from "./sortable";
-import { assignOwner, inheritCompanyOwner } from "@/server/mutations";
+import { approvePeople, assignOwner, discardPeople, inheritCompanyOwner, setFollowupModeBulk } from "@/server/mutations";
+import { ApproveButtons } from "./approve-buttons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { initialsOf, relativeDay } from "@/lib/format";
 import { todayInRome } from "@/lib/followup/dates";
 import { MODE, STRENGTH } from "@/lib/labels";
@@ -25,19 +27,23 @@ export type PersonRow = {
   strength: keyof typeof STRENGTH;
   owner: { id: string; initials: string; name: string } | null;
   country: string | null;
+  /** Proposto dall'agente, non ancora approvato */
+  pending: boolean;
 };
 
 const persone = (n: number) => (n === 1 ? "1 persona" : `${n} persone`);
 
 export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = true }: { rows: PersonRow[]; today?: string; showOwnerFilter?: boolean }) {
-  const [mode, setMode] = useState<keyof typeof MODE | null>(null);
+  // Una scheda per modalità, più "Da approvare" per i contatti proposti dall'agente
+  const [mode, setMode] = useState<keyof typeof MODE | "da_approvare" | null>(null);
+  const pendingCount = rows.filter((r) => r.pending).length;
   const [owner, setOwner] = useState("");
   const [country, setCountry] = useState("");
   const filtered = useMemo(
     () =>
       rows.filter(
         (r) =>
-          (!mode || r.mode === mode) &&
+          (mode === "da_approvare" ? r.pending : !r.pending && (!mode || r.mode === mode)) &&
           (!owner || (owner === "none" ? !r.owner : r.owner?.id === owner)) &&
           (!country || r.country === country),
       ),
@@ -75,6 +81,24 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
       toast.success(ownerId ? `Owner assegnato a ${persone(res.data.updated)}` : `Owner tolto da ${persone(res.data.updated)}`);
       sel.clear();
     });
+  const bulkMode = (mode: "caldo" | "freddo" | "nessuno") =>
+    start(async () => {
+      const res = await setFollowupModeBulk(sel.ids, mode);
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(
+        mode === "nessuno"
+          ? `Follow-up cancellato per ${persone(res.data.updated)}`
+          : `${persone(res.data.updated)} in modalità ${mode === "caldo" ? "Caldo" : "Freddo"}`,
+      );
+      sel.clear();
+    });
+  const decide = (approve: boolean) =>
+    start(async () => {
+      const res = await (approve ? approvePeople : discardPeople)(sel.ids);
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(approve ? `Approvati: ${persone(res.data.updated)}` : `Scartati: ${persone(res.data.updated)}, non verranno più proposti`);
+      sel.clear();
+    });
   const inherit = () =>
     start(async () => {
       const res = await inheritCompanyOwner(sel.ids);
@@ -90,12 +114,13 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
     <div className="flex flex-col">
       <ViewTabs
         options={[
-          { value: null, label: "Tutte", count: rows.length },
+          { value: null, label: "Tutte", count: rows.length - pendingCount },
           ...(Object.keys(MODE) as (keyof typeof MODE)[]).map((k) => ({
             value: k,
             label: MODE[k].label === "Nessuno" ? "Senza follow-up" : MODE[k].label === "Caldo" ? "Caldi" : "Freddi",
-            count: rows.filter((r) => r.mode === k).length,
+            count: rows.filter((r) => !r.pending && r.mode === k).length,
           })),
+          ...(pendingCount ? [{ value: "da_approvare" as const, label: "Da approvare", count: pendingCount }] : []),
         ]}
         value={mode}
         onChange={setMode}
@@ -149,7 +174,7 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
                     )}
                   </td>
                   <td>
-                    <ModeChip mode={r.mode} />
+                    {r.pending ? <ApproveButtons id={r.id} size="xs" /> : <ModeChip mode={r.mode} />}
                   </td>
                   <td className={cn("whitespace-nowrap tabular-nums", due ? "font-medium text-bad" : "text-muted-foreground")}>
                     {r.nextFollowupOn ? relativeDay(r.nextFollowupOn, today) : "—"}
@@ -175,6 +200,35 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
         </table>
       </div>
       <BulkOwnerBar count={sel.ids.length} pending={pending} onAssign={assign} onClear={sel.clear}>
+        {mode === "da_approvare" ? (
+          <>
+            <Button size="sm" disabled={pending} onClick={() => decide(true)}>
+              <Check aria-hidden />
+              Approva
+            </Button>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => decide(false)}>
+              <X aria-hidden />
+              Scarta
+            </Button>
+          </>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" disabled={pending}>
+              Follow-up
+              <ChevronDown aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuItem onSelect={() => bulkMode("caldo")}>Caldo, ogni 30 giorni</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => bulkMode("freddo")}>Freddo, ogni 90 giorni</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => bulkMode("nessuno")}>
+              <BellOff aria-hidden />
+              Cancella follow-up
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button size="sm" variant="outline" disabled={pending} onClick={inherit}>
           <Building2 aria-hidden />
           Owner dell&apos;azienda

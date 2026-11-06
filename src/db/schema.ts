@@ -459,6 +459,9 @@ export const googleAccounts = pgTable("google_accounts", {
   connectedAt: createdAt(),
   gmailSyncedAt: timestamp("gmail_synced_at", { withTimezone: true }),
   calendarSyncedAt: timestamp("calendar_synced_at", { withTimezone: true }),
+  // Storico con i contatti del CRM (due anni), letto a blocchi di indirizzi: prossimo blocco e fine
+  gmailBackfillCursor: integer("gmail_backfill_cursor").notNull().default(0),
+  gmailBackfillDoneAt: timestamp("gmail_backfill_done_at", { withTimezone: true }),
   lastError: text("last_error"),
 });
 
@@ -478,6 +481,8 @@ export const calendarEvents = pgTable(
     meetLink: text("meet_link"),
     htmlLink: text("html_link"),
     attendees: text("attendees").array().notNull().default([]),
+    // Allegati dell'evento: Google Meet ci mette registrazione, trascrizione e note di Gemini (file in Drive)
+    attachments: jsonb("attachments").$type<{ title: string; url: string; mimeType: string | null }[]>().notNull().default([]),
     // L'azienda dei partecipanti esterni, se la conosciamo: rende l'evento visibile al team
     companyId: uuid("company_id").references(() => companies.id),
     updatedAt: updatedAt(),

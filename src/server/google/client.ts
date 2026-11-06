@@ -85,12 +85,17 @@ export class GoogleError extends Error {
 export async function googleGet<T>(token: string, url: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const u = new URL(url);
   for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined) u.searchParams.set(k, String(v));
-  const res = await fetch(u, { headers: { authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new GoogleError(body?.error?.message ?? `${u.pathname}: ${res.status}`, String(res.status));
+  // Google ogni tanto risponde con errori temporanei (429, 5xx): si riprova con attese crescenti
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(u, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
+    if (res?.ok) return res.json() as Promise<T>;
+    const transient = !res || res.status === 429 || res.status >= 500;
+    if (!transient || attempt >= 3) {
+      const body = res ? await res.json().catch(() => ({})) : {};
+      throw new GoogleError(body?.error?.message ?? `${u.pathname}: ${res?.status ?? "rete"}`, String(res?.status ?? "rete"));
+    }
+    await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
   }
-  return res.json() as Promise<T>;
 }
 
 /** Esegue `fn` su tutti gli elementi, al massimo `limit` alla volta. */

@@ -1,0 +1,2 @@
+ALTER TABLE "google_accounts" ADD COLUMN "gmail_backfill_cursor" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "google_accounts" ADD COLUMN "gmail_backfill_done_at" timestamp with time zone;

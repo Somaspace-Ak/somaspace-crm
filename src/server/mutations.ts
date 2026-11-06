@@ -644,6 +644,18 @@ export async function assignOwner(input: z.input<typeof bulkOwnerInput>): Promis
   return { ok: true, data: { updated } };
 }
 
+/** Modalità di follow-up per più persone insieme: Caldo, Freddo o Nessuno (escono dai follow-up). */
+export async function setFollowupModeBulk(ids: string[], mode: "caldo" | "freddo" | "nessuno"): Promise<Result<{ updated: number }>> {
+  await requireViewer();
+  const parsed = z.array(z.string().uuid()).min(1, "Seleziona almeno una persona").max(1000).safeParse(ids);
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  if (!followupModeEnum.enumValues.includes(mode)) return fail("Modalità non valida");
+  const rows = await db.update(people).set({ followupMode: mode, updatedAt: new Date() }).where(inArray(people.id, parsed.data)).returning({ id: people.id });
+  await recomputeFollowups(db, { people: parsed.data });
+  refresh();
+  return { ok: true, data: { updated: rows.length } };
+}
+
 /** Le persone prendono l'owner della loro azienda (specifica, sezione 4: di default l'owner dell'azienda). */
 export async function inheritCompanyOwner(personIds: string[]): Promise<Result<{ updated: number }>> {
   await requireViewer();
@@ -770,4 +782,50 @@ export async function disconnectGoogle(): Promise<Result<{ id: string }>> {
   }
   refresh();
   return { ok: true, data: { id: viewer.id } };
+}
+
+// ---------------------------------------------------------------------------
+// Contatti proposti dall'agente: approvare o scartare, anche in blocco.
+// Ognuno decide solo i propri (dalla sua casella) o quelli senza owner.
+// ---------------------------------------------------------------------------
+
+const pendingIds = z.array(z.string().uuid()).min(1, "Seleziona almeno un contatto").max(1000);
+
+export async function approvePeople(ids: string[]): Promise<Result<{ updated: number }>> {
+  const viewer = await requireViewer();
+  const parsed = pendingIds.safeParse(ids);
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  const rows = await db
+    .update(people)
+    .set({ status: "attivo", updatedAt: new Date() })
+    .where(
+      and(inArray(people.id, parsed.data), eq(people.status, "da_approvare"), or(eq(people.ownerId, viewer.id), isNull(people.ownerId))),
+    )
+    .returning({ id: people.id });
+  if (rows.length) await recomputeFollowups(db, { people: rows.map((r) => r.id) });
+  refresh();
+  return { ok: true, data: { updated: rows.length } };
+}
+
+/** Scartare un contatto esclude il suo indirizzo: l'agente non lo propone più. */
+export async function discardPeople(ids: string[]): Promise<Result<{ updated: number }>> {
+  const viewer = await requireViewer();
+  const parsed = pendingIds.safeParse(ids);
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  const rows = await db
+    .update(people)
+    .set({ status: "archiviato", updatedAt: new Date() })
+    .where(
+      and(inArray(people.id, parsed.data), eq(people.status, "da_approvare"), or(eq(people.ownerId, viewer.id), isNull(people.ownerId))),
+    )
+    .returning({ email: people.email });
+  const emails = rows.flatMap((r) => (r.email ? [r.email] : []));
+  if (emails.length) {
+    await db
+      .insert(excludedAddresses)
+      .values(emails.map((address) => ({ address, reason: "Scartato da Da approvare" })))
+      .onConflictDoNothing();
+  }
+  refresh();
+  return { ok: true, data: { updated: rows.length } };
 }

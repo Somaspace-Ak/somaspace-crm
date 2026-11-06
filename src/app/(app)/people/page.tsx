@@ -5,7 +5,7 @@ import { PeopleTable } from "@/components/crm/people-table";
 import { fullName } from "@/lib/format";
 import { todayInRome } from "@/lib/followup/dates";
 import { parseScope, ScopeToggle } from "@/components/crm/scope-toggle";
-import { listPeople } from "@/server/queries";
+import { listPeople, listPendingPeople } from "@/server/queries";
 import { getViewer } from "@/server/session";
 
 export const metadata = { title: "Persone" };
@@ -21,7 +21,7 @@ export default function PeoplePage(props: PageProps<"/people">) {
 async function People({ searchParams }: PageProps<"/people">) {
   const scope = parseScope((await searchParams).vista, "team");
   const { viewer } = await getViewer();
-  const rows = await listPeople(scope === "mine" ? viewer.id : undefined);
+  const [rows, pending] = await Promise.all([listPeople(scope === "mine" ? viewer.id : undefined), listPendingPeople(viewer)]);
   return (
     <>
       <PageHeader
@@ -38,7 +38,8 @@ async function People({ searchParams }: PageProps<"/people">) {
         <PeopleTable
           showOwnerFilter={scope === "team"}
           today={todayInRome()}
-          rows={rows.map(({ p, company, owner }) => ({
+          rows={[...rows, ...pending].map(({ p, company, owner }) => ({
+            pending: p.status === "da_approvare",
             id: p.id,
             name: fullName(p),
             company: company ? { id: company.id, name: company.name } : null,

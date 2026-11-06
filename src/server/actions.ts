@@ -113,11 +113,14 @@ export async function markFollowupDone(kind: "persona" | "opportunita", id: stri
   refresh();
 }
 
-export async function changeMode(personId: string, mode: Mode) {
+/** Cambia la modalità di follow-up. Restituisce quella di prima, per poter annullare. */
+export async function changeMode(personId: string, mode: Mode | null): Promise<Mode | null> {
   await requireViewer();
+  const [before] = await db.select({ mode: people.followupMode }).from(people).where(eq(people.id, personId));
   await db.update(people).set({ followupMode: mode }).where(eq(people.id, personId));
   await recomputeFollowups(db, { people: [personId] });
   refresh();
+  return before?.mode ?? null;
 }
 
 // ---------------------------------------------------------------------------

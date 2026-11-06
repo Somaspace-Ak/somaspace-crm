@@ -73,21 +73,24 @@ type GmailMessage = {
   payload?: { headers?: { name: string; value: string }[] };
 };
 
-async function syncGmail(db: Db, userId: string, token: string, ctx: Ctx, since: Date) {
-  const q = `after:${Math.floor(since.getTime() / 1000)} -in:chats -category:promotions -category:social -category:forums`;
+/** Gli id dei messaggi di una ricerca Gmail, dal più recente, fino a `cap`. */
+async function listIds(token: string, q: string, cap: number) {
   const ids: string[] = [];
   let pageToken: string | undefined;
   do {
     const page = await googleGet<{ messages?: { id: string }[]; nextPageToken?: string }>(
       token,
       "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-      { q, maxResults: 100, pageToken },
+      { q, maxResults: Math.min(100, cap - ids.length), pageToken },
     );
     ids.push(...(page.messages ?? []).map((m) => m.id));
     pageToken = page.nextPageToken;
-  } while (pageToken && ids.length < MAX_MESSAGES);
+  } while (pageToken && ids.length < cap);
+  return { ids, truncated: Boolean(pageToken) };
+}
 
-  // Quelle già registrate non si rileggono
+/** Quelle già registrate per questa casella non si rileggono. */
+async function unknownIds(db: Db, userId: string, ids: string[]) {
   const known = new Set<string>();
   for (let i = 0; i < ids.length; i += 200) {
     const rows = await db
@@ -96,16 +99,17 @@ async function syncGmail(db: Db, userId: string, token: string, ctx: Ctx, since:
       .where(and(eq(interactions.ownerId, userId), inArray(interactions.sourceId, ids.slice(i, i + 200))));
     rows.forEach((r) => r.s && known.add(r.s));
   }
-  const unread = ids.filter((id) => !known.has(id));
-  const todo = unread.slice(0, MAX_MESSAGES);
-  // Elenco troncato o troppe email nuove: il prossimo giro riparte dalla stessa data
-  const more = Boolean(pageToken) || unread.length > todo.length;
+  return ids.filter((id) => !known.has(id));
+}
 
-  const messages = await mapLimit(todo, 8, (id) =>
+/**
+ * Legge le intestazioni e registra le email con i contatti del CRM.
+ * Con `proposeNew` un mittente sconosciuto che scrive di persona va in Da approvare.
+ */
+async function recordMessages(db: Db, userId: string, token: string, ctx: Ctx, ids: string[], proposeNew: boolean, touched: Set<string>) {
+  const messages = await mapLimit(ids, 8, (id) =>
     googleGet<GmailMessage>(token, `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`, { format: "metadata" }).catch(() => null),
   );
-
-  const touched = new Set<string>();
   let recorded = 0;
   let proposed = 0;
   for (const m of messages) {
@@ -125,8 +129,7 @@ async function syncGmail(db: Db, userId: string, token: string, ctx: Ctx, since:
     let companyId: string | null = null;
     for (const a of external) {
       let p = ctx.personByEmail.get(a.email);
-      // Un mittente nuovo che ci scrive di persona va in Da approvare
-      if (!p && !outbound && a.email === from.email && !isAutomated(a.email)) {
+      if (!p && proposeNew && !outbound && a.email === from.email && !isAutomated(a.email)) {
         const domainCompany = isFreeMail(a.email) ? null : (ctx.companyByDomain.get(domainOf(a.email)) ?? null);
         const [created] = await db
           .insert(people)
@@ -170,12 +173,68 @@ async function syncGmail(db: Db, userId: string, token: string, ctx: Ctx, since:
     personIds.forEach((id) => touched.add(id));
     recorded++;
   }
+  return { recorded, proposed };
+}
+
+/** Indirizzi dei contatti del CRM per blocco di ricerca nello storico. */
+const BACKFILL_CHUNK = 10;
+/** Quanto indietro si cerca lo storico con i contatti. */
+const BACKFILL_DAYS = 730;
+/** Email al massimo per blocco: le più recenti con quei contatti. */
+const BACKFILL_PER_CHUNK = 150;
+/** Tempo massimo di un giro: lo storico continua al giro successivo. */
+const TIME_BUDGET_MS = 180_000;
+
+type Account = typeof googleAccounts.$inferSelect;
+
+async function syncGmail(db: Db, acc: Account, token: string, ctx: Ctx, started: number) {
+  const touched = new Set<string>();
+
+  // 1. Le email recenti, anche dai mittenti nuovi
+  const since = acc.gmailSyncedAt ? new Date(acc.gmailSyncedAt.getTime() - DAY) : new Date(Date.now() - FIRST_SYNC_DAYS * DAY);
+  const recent = await listIds(token, `after:${Math.floor(since.getTime() / 1000)} -in:chats -category:promotions -category:social -category:forums`, 3000);
+  const unread = await unknownIds(db, acc.userId, recent.ids);
+  // A blocchi dalle più vecchie della finestra: il giro dopo riprende da dove si è fermato
+  const todo = unread.slice(-MAX_MESSAGES);
+  const r1 = await recordMessages(db, acc.userId, token, ctx, todo, true, touched);
+  const recentDone = !recent.truncated && unread.length <= MAX_MESSAGES;
+
+  // 2. Lo storico con i contatti del CRM, fino a due anni, un blocco di indirizzi alla volta
+  let cursor = acc.gmailBackfillCursor;
+  let backfillDone = Boolean(acc.gmailBackfillDoneAt);
+  let r2 = { recorded: 0, proposed: 0 };
+  if (!backfillDone) {
+    const addresses = [...ctx.personByEmail.entries()]
+      .filter(([email, p]) => p.status === "attivo" && !isExcluded(email, ctx.internalDomains, ctx.excluded))
+      .map(([email]) => email)
+      .sort();
+    const after = Math.floor((Date.now() - BACKFILL_DAYS * DAY) / 1000);
+    while (cursor * BACKFILL_CHUNK < addresses.length && Date.now() - started < TIME_BUDGET_MS) {
+      const chunk = addresses.slice(cursor * BACKFILL_CHUNK, (cursor + 1) * BACKFILL_CHUNK);
+      const q = `{${chunk.map((a) => `from:${a} to:${a} cc:${a}`).join(" ")}} after:${after}`;
+      const { ids } = await listIds(token, q, BACKFILL_PER_CHUNK);
+      const res = await recordMessages(db, acc.userId, token, ctx, await unknownIds(db, acc.userId, ids), false, touched);
+      r2 = { recorded: r2.recorded + res.recorded, proposed: r2.proposed + res.proposed };
+      cursor++;
+    }
+    backfillDone = cursor * BACKFILL_CHUNK >= addresses.length;
+    await db
+      .update(googleAccounts)
+      .set({ gmailBackfillCursor: cursor, gmailBackfillDoneAt: backfillDone ? new Date() : null })
+      .where(eq(googleAccounts.userId, acc.userId));
+  }
 
   if (touched.size) {
     await refreshLastInteractions(db, [...touched]);
     await recomputeFollowups(db, { people: [...touched] });
   }
-  return { scanned: ids.length, recorded, proposed, more };
+  return {
+    scanned: recent.ids.length,
+    recorded: r1.recorded + r2.recorded,
+    proposed: r1.proposed + r2.proposed,
+    more: !recentDone || !backfillDone,
+    recentDone,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +251,7 @@ type CalendarEvent = {
   end?: { dateTime?: string; date?: string };
   attendees?: { email?: string; self?: boolean; resource?: boolean }[];
   conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
+  attachments?: { title?: string; fileUrl?: string; mimeType?: string }[];
 };
 
 async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
@@ -230,6 +290,9 @@ async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
       meetLink: e.hangoutLink ?? e.conferenceData?.entryPoints?.find((x) => x.entryPointType === "video")?.uri ?? null,
       htmlLink: e.htmlLink ?? null,
       attendees,
+      attachments: (e.attachments ?? [])
+        .filter((a) => a.fileUrl)
+        .map((a) => ({ title: a.title ?? "Allegato", url: a.fileUrl!, mimeType: a.mimeType ?? null })),
       companyId,
       updatedAt: new Date(),
     };
@@ -257,7 +320,7 @@ async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
 // Giro completo
 // ---------------------------------------------------------------------------
 
-export type SyncResult = { ok: true; scanned: number; recorded: number; proposed: number; events: number; more: boolean } | { ok: false; error: string };
+export type SyncResult = { ok: true; scanned: number; recorded: number; proposed: number; events: number; more: boolean; recentDone: boolean } | { ok: false; error: string };
 
 export async function syncGoogleAccount(db: Db, userId: string): Promise<SyncResult> {
   const [acc] = await db.select().from(googleAccounts).where(eq(googleAccounts.userId, userId));
@@ -266,18 +329,17 @@ export async function syncGoogleAccount(db: Db, userId: string): Promise<SyncRes
   try {
     const token = await accessToken(decrypt(acc.refreshToken));
     const ctx = await loadContext(db, acc.email);
-    const since = acc.gmailSyncedAt ? new Date(acc.gmailSyncedAt.getTime() - DAY) : new Date(Date.now() - FIRST_SYNC_DAYS * DAY);
-    const mail = await syncGmail(db, userId, token, ctx, since);
     const cal = await syncCalendar(db, userId, token, ctx);
+    const mail = await syncGmail(db, acc, token, ctx, started.getTime());
     await db
       .update(googleAccounts)
-      // Se restano email da leggere, il prossimo giro riparte dalla stessa data
-      .set({ gmailSyncedAt: mail.more ? acc.gmailSyncedAt : started, calendarSyncedAt: started, lastError: null })
+      // Se restano email recenti da leggere, il prossimo giro riparte dalla stessa data
+      .set({ gmailSyncedAt: mail.recentDone ? started : acc.gmailSyncedAt, calendarSyncedAt: started, lastError: null })
       .where(eq(googleAccounts.userId, userId));
     await db.insert(agentLog).values({
       action: "sync_google",
       outcome: "ok",
-      detail: `${acc.email}: ${mail.recorded} email registrate, ${mail.proposed} contatti da approvare, ${cal.events} eventi`,
+      detail: `${acc.email}: ${mail.recorded} email registrate, ${mail.proposed} contatti da approvare, ${cal.events} eventi${mail.more ? ", continua al prossimo giro" : ""}`,
       onBehalfOf: userId,
     });
     return { ok: true, ...mail, ...cal };

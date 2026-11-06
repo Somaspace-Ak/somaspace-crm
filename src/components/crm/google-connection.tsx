@@ -26,7 +26,7 @@ export function GoogleConnection({
 }: {
   configured: boolean;
   flash: string | null;
-  mine: { email: string; connectedAt: Date; gmailSyncedAt: Date | null; calendarSyncedAt: Date | null; lastError: string | null } | null;
+  mine: { email: string; connectedAt: Date; gmailSyncedAt: Date | null; calendarSyncedAt: Date | null; backfillDoneAt: Date | null; lastError: string | null } | null;
   team: { id: string; name: string; initials: string; connected: boolean }[];
 }) {
   const [pending, start] = useTransition();
@@ -65,6 +65,9 @@ export function GoogleConnection({
               <span className="text-xs text-muted-foreground">
                 Gmail in sola lettura e Google Calendar. Ultima lettura:{" "}
                 {mine.calendarSyncedAt ? when.format(mine.calendarSyncedAt) : "in corso"}. Si aggiorna da sola ogni 30 minuti.
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Storico con i contatti del CRM (ultimi 2 anni): {mine.backfillDoneAt ? "letto" : "in lettura, un blocco a ogni giro"}.
               </span>
               {mine.lastError ? <span className="text-xs text-bad">Ultimo errore: {mine.lastError}</span> : null}
             </div>

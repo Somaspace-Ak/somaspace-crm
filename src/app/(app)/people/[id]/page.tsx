@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { ApproveButtons } from "@/components/crm/approve-buttons";
 import { Button } from "@/components/ui/button";
 import {AgentMark, Chip, ModeChip, StageChip, StrengthBar, UserAvatar } from "@/components/crm/chips";
 import { PageHeader, PageSkeleton } from "@/components/crm/page-header";
@@ -35,6 +36,15 @@ async function Person({ params }: PageProps<"/people/[id]">) {
   return (
     <>
       <PageHeader breadcrumb={<Breadcrumb items={[{ label: "Persone", href: "/people" }, ...(company ? [{ label: company.name, href: `/companies/${company.id}` }] : []), { label: name }]} />} title={name} />
+      {p.status === "da_approvare" ? (
+        <div className="flex flex-wrap items-center gap-3 border-b bg-brand-bg px-4 py-3 text-[13px] md:px-6">
+          <span className="min-w-0 flex-1">
+            <span className="font-medium text-brand">Contatto proposto dall&apos;agente.</span>{" "}
+            Ti ha scritto e non era nel CRM: approvalo per seguirlo, o scartalo e non verrà più proposto.
+          </span>
+          <ApproveButtons id={p.id} />
+        </div>
+      ) : null}
       <RecordHero
         avatar={<UserAvatar initials={`${p.firstName[0] ?? ""}${p.lastName[0] ?? ""}`.toUpperCase()} className="size-14 text-lg" />}
         title={name}

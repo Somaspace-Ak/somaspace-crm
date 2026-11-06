@@ -370,7 +370,19 @@ export async function getCompany(id: string, viewer: User) {
   if (!row) return null;
 
   const [peopleRows, opps, prjs, factRows, timeline] = await Promise.all([
-    db.select().from(people).where(and(eq(people.companyId, id), ne(people.status, "archiviato"))).orderBy(asc(people.firstName)),
+    db
+      .select()
+      .from(people)
+      .where(
+        and(
+          eq(people.companyId, id),
+          or(
+            eq(people.status, "attivo"),
+            and(eq(people.status, "da_approvare"), or(eq(people.ownerId, viewer.id), isNull(people.ownerId))),
+          ),
+        ),
+      )
+      .orderBy(asc(people.firstName)),
     db.select().from(opportunities).where(eq(opportunities.companyId, id)).orderBy(desc(opportunities.createdAt)),
     db.select().from(projects).where(eq(projects.companyId, id)),
     db.select().from(facts).where(and(eq(facts.companyId, id), isNull(facts.retractedAt))).orderBy(desc(facts.createdAt)),
@@ -382,6 +394,17 @@ export async function getCompany(id: string, viewer: User) {
 // ---------------------------------------------------------------------------
 // People
 // ---------------------------------------------------------------------------
+
+/** I contatti proposti dall'agente che tocca a me approvare: dalla mia casella o senza owner. */
+export async function listPendingPeople(viewer: User) {
+  return db
+    .select({ p: people, company: companies, owner: owners })
+    .from(people)
+    .leftJoin(companies, eq(companies.id, people.companyId))
+    .leftJoin(owners, eq(owners.id, people.ownerId))
+    .where(and(eq(people.status, "da_approvare"), or(eq(people.ownerId, viewer.id), isNull(people.ownerId))))
+    .orderBy(desc(people.createdAt));
+}
 
 export async function listPeople(ownerId?: string) {
   return db
@@ -402,6 +425,7 @@ export async function getPerson(id: string, viewer: User) {
     .leftJoin(events, eq(events.id, people.eventId))
     .where(eq(people.id, id));
   if (!row) return null;
+  if (row.p.status === "da_approvare" && row.p.ownerId && row.p.ownerId !== viewer.id) return null;
   const [opps, factRows, timeline] = await Promise.all([
     db.select().from(opportunities).where(eq(opportunities.personId, id)),
     db.select().from(facts).where(and(eq(facts.personId, id), isNull(facts.retractedAt))),
@@ -574,13 +598,39 @@ export async function getProject(id: string, viewer: User) {
     .where(eq(projects.id, id));
   if (!row) return null;
 
-  const [taskRows, meetingRows, factRows, timeline, team] = await Promise.all([
+  // Eventi del calendario del progetto: quelli con il cliente (visibili al team)
+  // e i miei che nel titolo nominano il progetto (riunioni interne)
+  const name = row.p.name.trim();
+  const eventFilter = or(
+    row.p.companyId ? eq(calendarEvents.companyId, row.p.companyId) : undefined,
+    name.length >= 4 ? and(eq(calendarEvents.userId, viewer.id), sql`${calendarEvents.title} ilike ${`%${name}%`}`) : undefined,
+  );
+  const [taskRows, meetingRows, factRows, timeline, team, eventRows] = await Promise.all([
     db.select().from(tasks).where(eq(tasks.projectId, id)).orderBy(asc(tasks.dueOn)),
     db.select().from(meetings).where(eq(meetings.projectId, id)).orderBy(desc(meetings.occurredAt)),
     db.select().from(facts).where(and(eq(facts.projectId, id), isNull(facts.retractedAt))),
     getTimeline(viewer, { projectId: id }),
     db.select({ u: users }).from(projectMembers).innerJoin(users, eq(users.id, projectMembers.userId)).where(eq(projectMembers.projectId, id)),
+    eventFilter
+      ? db
+          .select({ e: calendarEvents, owner: owners })
+          .from(calendarEvents)
+          .innerJoin(owners, eq(owners.id, calendarEvents.userId))
+          .where(eventFilter)
+          .orderBy(desc(calendarEvents.startsAt))
+      : Promise.resolve([]),
   ]);
+  // Lo stesso evento nel calendario di più fondatori si mostra una volta
+  const seenEvents = new Set<string>();
+  const now = Date.now();
+  const events = eventRows
+    .filter((r) => {
+      const k = `${r.e.googleId}:${r.e.startsAt.toISOString()}`;
+      if (seenEvents.has(k)) return false;
+      seenEvents.add(k);
+      return true;
+    })
+    .map((r) => ({ ...r, upcoming: r.e.startsAt.getTime() >= now }));
   const assignees = await assigneesFor(taskRows.map((t) => t.id));
   const withAssignees = taskRows.map((t) => ({ ...t, assignees: assignees.get(t.id) ?? [] }));
   const roots = withAssignees
@@ -593,6 +643,7 @@ export async function getProject(id: string, viewer: User) {
     facts: factRows,
     timeline,
     team: team.map((t) => t.u),
+    events,
   };
 }
 
@@ -947,6 +998,7 @@ export async function getGoogleStatus(viewer: User) {
       connectedAt: googleAccounts.connectedAt,
       gmailSyncedAt: googleAccounts.gmailSyncedAt,
       calendarSyncedAt: googleAccounts.calendarSyncedAt,
+      backfillDoneAt: googleAccounts.gmailBackfillDoneAt,
       lastError: googleAccounts.lastError,
     })
     .from(googleAccounts);

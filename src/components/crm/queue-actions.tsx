@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { Check, Clock, Mail, MoreHorizontal, XCircle } from "lucide-react";
+import { BellOff, Check, Clock, Mail, MoreHorizontal, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -83,7 +83,35 @@ export function QueueActions({
             <MoreHorizontal aria-hidden />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-56">
+          {kind === "persona" ? (
+            <>
+              <DropdownMenuItem
+                onSelect={() =>
+                  start(async () => {
+                    const before = await changeMode(id, "nessuno");
+                    toast.success("Follow-up cancellato: non comparirà più in Oggi", {
+                      action: { label: "Annulla", onClick: () => void changeMode(id, before) },
+                    });
+                  })
+                }
+              >
+                <BellOff aria-hidden />
+                Cancella follow-up
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem
+                onSelect={() => run(() => moveOpportunity(id, "persa", { lostReason: "nessuna_risposta" }), "Segnata come persa: i follow-up si fermano")}
+              >
+                <XCircle aria-hidden />
+                Segna persa e ferma i follow-up
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Rimanda</DropdownMenuLabel>
           <DropdownMenuItem onSelect={() => run(() => snoozeBy(kind, id, 7), "Rimandato di una settimana")}>
             <Clock aria-hidden />1 settimana
@@ -102,9 +130,6 @@ export function QueueActions({
                 <DropdownMenuSubContent>
                   <DropdownMenuItem onSelect={() => run(() => changeMode(id, "caldo"), "Ora è Caldo: ogni 30 giorni")}>Caldo</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => run(() => changeMode(id, "freddo"), "Ora è Freddo: ogni 90 giorni")}>Freddo</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => run(() => changeMode(id, "nessuno"), "Nessun follow-up per questa persona")}>
-                    Nessuno
-                  </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             </>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ApproveButtons } from "@/components/crm/approve-buttons";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ExternalLink } from "lucide-react";
@@ -196,7 +197,14 @@ async function Company({ params }: PageProps<"/companies/[id]">) {
                       <span className="text-sm font-medium hover:underline">{fullName(p)}</span>
                       <span className="text-xs text-muted-foreground">{p.position}</span>
                     </Link>
-                    {p.status === "da_approvare" ? <Chip tone="brand">Da approvare</Chip> : <ModeChip mode={p.followupMode} />}
+                    {p.status === "da_approvare" ? (
+                      <>
+                        <Chip tone="brand">Da approvare</Chip>
+                        <ApproveButtons id={p.id} size="xs" />
+                      </>
+                    ) : (
+                      <ModeChip mode={p.followupMode} />
+                    )}
                     <StrengthBar value={p.connectionStrength} />
                   </li>
                 ))}

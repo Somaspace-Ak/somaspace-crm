@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ProjectEvents } from "@/components/crm/project-events";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Mic, Users } from "lucide-react";
@@ -156,7 +157,7 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
         <Tabs defaultValue="task" className="gap-4">
           <TabsList variant="line" className={lineTabsList}>
             <TabsTrigger value="task" className={lineTab}>Task {open.length}</TabsTrigger>
-            <TabsTrigger value="meeting" className={lineTab}>Meeting {data.meetings.length}</TabsTrigger>
+            <TabsTrigger value="meeting" className={lineTab}>Meeting {data.meetings.length + data.events.length}</TabsTrigger>
             <TabsTrigger value="timeline" className={lineTab}>Timeline</TabsTrigger>
           </TabsList>
           <TabsContent value="task" className="flex flex-col gap-6">
@@ -179,7 +180,8 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
               </section>
             ) : null}
           </TabsContent>
-          <TabsContent value="meeting">
+          <TabsContent value="meeting" className="flex flex-col gap-6">
+            <ProjectEvents events={data.events} />
             {data.meetings.length ? (
               <ul className="divide-y overflow-hidden rounded-[10px] border bg-card">
                 {data.meetings.map((m) => (
@@ -197,8 +199,8 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <EmptyState>Nessun meeting collegato.</EmptyState>
+            ) : data.events.length ? null : (
+              <EmptyState>Nessun meeting collegato. Quelli del Google Calendar con il cliente compaiono qui da soli.</EmptyState>
             )}
           </TabsContent>
           <TabsContent value="timeline">
