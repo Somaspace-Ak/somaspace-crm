@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader, PageSkeleton } from "@/components/crm/page-header";
 import { parseScope, ScopeToggle } from "@/components/crm/scope-toggle";
@@ -30,7 +30,8 @@ const PER_CELL = 4;
 type Item =
   | { kind: "task"; key: string; date: string; label: string; done: boolean; snapshot: Parameters<typeof TaskTitle>[0]["task"]; hint: string }
   | { kind: "progetto"; key: string; date: string; label: string; href: string; hint: string }
-  | { kind: "meeting"; key: string; date: string; label: string; href: string; time: string; hint: string };
+  | { kind: "meeting"; key: string; date: string; label: string; href: string; time: string; hint: string }
+  | { kind: "evento"; key: string; date: string; label: string; href: string | null; time: string | null; meet: boolean; hint: string };
 
 function parseMonth(v: unknown, today: string) {
   return typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : today.slice(0, 7);
@@ -61,6 +62,16 @@ async function Calendar({ searchParams }: PageProps<"/calendario">) {
 
   const data = await getCalendar(viewer, scope, start, end);
   const items: Item[] = [
+    ...data.events.map(({ e, company, owner }) => ({
+      kind: "evento" as const,
+      key: `e-${e.id}`,
+      date: e.allDay ? e.startsAt.toISOString().slice(0, 10) : toRomeDate(e.startsAt),
+      label: e.title,
+      href: e.meetLink ?? e.htmlLink,
+      time: e.allDay ? null : formatTime(e.startsAt),
+      meet: Boolean(e.meetLink),
+      hint: [company?.name, owner.id !== viewer.id ? owner.name.split(" ")[0] : null, e.meetLink ? "Google Meet" : null].filter(Boolean).join(" · "),
+    })),
     ...data.meetings.map(({ m, company }) => ({
       kind: "meeting" as const,
       key: `m-${m.id}`,
@@ -102,7 +113,11 @@ async function Calendar({ searchParams }: PageProps<"/calendario">) {
   for (const it of items) byDay.set(it.date, [...(byDay.get(it.date) ?? []), it]);
 
   const q = (m: string) => `/calendario?mese=${m}${scope === "team" ? "&vista=team" : ""}`;
-  const counts = { task: data.tasks.filter((r) => r.t.status !== "fatto").length, progetti: data.projects.length, meeting: data.meetings.length };
+  const counts = {
+    task: data.tasks.filter((r) => r.t.status !== "fatto").length,
+    progetti: data.projects.length,
+    meeting: data.meetings.length + data.events.length,
+  };
 
   return (
     <>
@@ -133,7 +148,7 @@ async function Calendar({ searchParams }: PageProps<"/calendario">) {
             <Legend className="bg-foreground/70">Task</Legend>
             <Legend className="bg-brand">Consegna progetto</Legend>
             <Legend className="bg-cold">Meeting</Legend>
-            <span>Google Calendar: in arrivo</span>
+            <Legend className="bg-ok">Google Calendar</Legend>
           </div>
         </div>
 
@@ -236,6 +251,25 @@ function CalendarItem({ item, today, compact }: { item: Item; today: string; com
         <span className="sr-only">Task{late ? " in ritardo" : ""}: </span>
         {label}
       </TaskTitle>
+    );
+  }
+  if (item.kind === "evento") {
+    const body = (
+      <>
+        <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
+        {item.time ? <span className="shrink-0 text-muted-foreground tabular-nums">{item.time}</span> : null}
+        {item.meet ? <Video className="size-3 shrink-0 text-ok" aria-label="Google Meet" /> : null}
+        {label}
+      </>
+    );
+    return item.href ? (
+      <a href={item.href} target="_blank" rel="noreferrer" className={base} title={item.hint}>
+        {body}
+      </a>
+    ) : (
+      <span className={base} title={item.hint}>
+        {body}
+      </span>
     );
   }
   return (

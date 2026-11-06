@@ -6,10 +6,12 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   agentLog,
+  calendarEvents,
   companies,
   dataStatusEnum,
   excludedAddresses,
   followupModeEnum,
+  googleAccounts,
   healthEnum,
   interactionPeople,
   interactions,
@@ -33,6 +35,9 @@ import { formatEuro } from "@/lib/format";
 import { recomputeFollowups, refreshLastInteractions } from "./followups";
 import { requireViewer } from "./session";
 import { runSuggestionRules } from "./suggestions";
+import { decrypt } from "./crypto";
+import { revoke as revokeGoogle } from "./google/client";
+import { syncGoogleAccount } from "./google/sync";
 
 /**
  * Creazione e modifica dei record dall'app.
@@ -740,4 +745,29 @@ export async function saveSuggestionSettings(input: z.input<typeof suggestionSet
   const res = await runSuggestionRules(db, viewer.id);
   refresh();
   return { ok: true, data: { created: res.created, removed: res.removed } };
+}
+
+// ---------------------------------------------------------------------------
+// Google: sincronizzazione a mano e scollegamento, solo della propria casella
+// ---------------------------------------------------------------------------
+
+export async function syncMyGoogle(): Promise<Result<{ recorded: number; proposed: number; events: number; more: boolean }>> {
+  const viewer = await requireViewer();
+  const res = await syncGoogleAccount(db, viewer.id);
+  refresh();
+  if (!res.ok) return fail(res.error);
+  return { ok: true, data: { recorded: res.recorded, proposed: res.proposed, events: res.events, more: res.more } };
+}
+
+/** Revoca l'accesso a Google e toglie gli eventi del calendario. Le email già registrate restano, private. */
+export async function disconnectGoogle(): Promise<Result<{ id: string }>> {
+  const viewer = await requireViewer();
+  const [acc] = await db.select().from(googleAccounts).where(eq(googleAccounts.userId, viewer.id));
+  if (acc) {
+    await revokeGoogle(decrypt(acc.refreshToken)).catch(() => undefined);
+    await db.delete(calendarEvents).where(eq(calendarEvents.userId, viewer.id));
+    await db.delete(googleAccounts).where(eq(googleAccounts.userId, viewer.id));
+  }
+  refresh();
+  return { ok: true, data: { id: viewer.id } };
 }

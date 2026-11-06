@@ -2,8 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { supabaseConfig } from "@/lib/supabase/config";
 
-/** Pagine aperte a chi non è entrato. */
-const PUBLIC_PATHS = ["/login", "/auth/"];
+/** Pagine aperte a chi non è entrato. Il cron si protegge da solo con CRON_SECRET. */
+const PUBLIC_PATHS = ["/login", "/auth/", "/api/cron/"];
 
 /**
  * Rinnova la sessione Supabase a ogni richiesta e manda al login chi non è entrato.

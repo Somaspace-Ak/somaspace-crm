@@ -6,28 +6,42 @@ import { formatDate, formatTime } from "@/lib/format";
 import { FACT_KIND } from "@/lib/labels";
 import { retractFact } from "@/server/actions";
 import { ExcludedAddresses, FollowupSettingsForm, GeneralSettingsForm, SuggestionSettingsForm } from "@/components/crm/settings-forms";
-import { getAgentLog, getMySharedFacts, getSettingsPage } from "@/server/queries";
+import { GoogleConnection } from "@/components/crm/google-connection";
+import { googleConfigured } from "@/server/google/client";
+import { getAgentLog, getGoogleStatus, getMySharedFacts, getSettingsPage } from "@/server/queries";
 import { getViewer } from "@/server/session";
 
 export const metadata = { title: "Impostazioni" };
 
-export default function SettingsPage() {
+export default function SettingsPage(props: PageProps<"/impostazioni">) {
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <Settings />
+      <Settings {...props} />
     </Suspense>
   );
 }
 
-async function Settings() {
-  const { viewer } = await getViewer();
-  const [log, shared, cfg] = await Promise.all([getAgentLog(), getMySharedFacts(viewer), getSettingsPage()]);
+async function Settings({ searchParams }: PageProps<"/impostazioni">) {
+  const { google: flash } = await searchParams;
+  const { viewer, team } = await getViewer();
+  const [log, shared, cfg, google] = await Promise.all([getAgentLog(), getMySharedFacts(viewer), getSettingsPage(), getGoogleStatus(viewer)]);
 
   return (
     <>
       <PageHeader title="Impostazioni" description="Parametri dell'agente, cosa ha condiviso la tua casella, cosa ha fatto l'agente" />
       <div className="grid gap-8 p-4 md:p-6 xl:grid-cols-2">
         <div className="flex flex-col gap-8">
+          <div id="google" className="scroll-mt-20">
+            <Section title="Gmail e Google Calendar">
+              <GoogleConnection
+                configured={googleConfigured}
+                flash={typeof flash === "string" ? flash : null}
+                mine={google.mine}
+                team={team.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, initials: u.initials, connected: google.connectedUserIds.includes(u.id) }))}
+              />
+            </Section>
+          </div>
+
           <Section title="Follow-up">
             <FollowupSettingsForm value={cfg.followup} />
           </Section>

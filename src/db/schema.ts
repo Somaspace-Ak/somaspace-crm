@@ -445,6 +445,47 @@ export const suggestions = pgTable("suggestions", {
 }, (t) => [index("suggestions_rule_key_idx").on(t.ruleKey)]);
 
 // ---------------------------------------------------------------------------
+// Google: caselle e calendari collegati
+// ---------------------------------------------------------------------------
+
+/** Un account Google per fondatore. Il refresh token è cifrato (AES-256-GCM, TOKEN_ENCRYPTION_KEY). */
+export const googleAccounts = pgTable("google_accounts", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  scopes: text("scopes").array().notNull().default([]),
+  connectedAt: createdAt(),
+  gmailSyncedAt: timestamp("gmail_synced_at", { withTimezone: true }),
+  calendarSyncedAt: timestamp("calendar_synced_at", { withTimezone: true }),
+  lastError: text("last_error"),
+});
+
+/** Eventi del Google Calendar di ogni fondatore, dal mese scorso ai prossimi tre. */
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    googleId: text("google_id").notNull(),
+    title: text("title").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    allDay: boolean("all_day").notNull().default(false),
+    meetLink: text("meet_link"),
+    htmlLink: text("html_link"),
+    attendees: text("attendees").array().notNull().default([]),
+    // L'azienda dei partecipanti esterni, se la conosciamo: rende l'evento visibile al team
+    companyId: uuid("company_id").references(() => companies.id),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("calendar_events_user_google_idx").on(t.userId, t.googleId), index("calendar_events_starts_idx").on(t.startsAt)],
+);
+
+// ---------------------------------------------------------------------------
 // Tecniche
 // ---------------------------------------------------------------------------
 

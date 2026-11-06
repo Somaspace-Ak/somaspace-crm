@@ -9,6 +9,8 @@ import {
   settings,
   events,
   facts,
+  googleAccounts,
+  calendarEvents,
   grants,
   interactionPeople,
   interactions,
@@ -836,7 +838,7 @@ export async function getCalendar(viewer: User, scope: "mine" | "team", from: st
     .select({ id: projectMembers.projectId })
     .from(projectMembers)
     .where(eq(projectMembers.userId, viewer.id));
-  const [taskRows, projectRows, meetingRows] = await Promise.all([
+  const [taskRows, projectRows, meetingRows, eventRows] = await Promise.all([
     db
       .select({ t: tasks, project: projects })
       .from(tasks)
@@ -878,11 +880,54 @@ export async function getCalendar(viewer: User, scope: "mine" | "team", from: st
         ),
       )
       .orderBy(asc(meetings.occurredAt)),
+    // Google Calendar: i miei eventi; degli altri solo le riunioni con un'azienda del CRM
+    db
+      .select({ e: calendarEvents, company: companies, owner: owners })
+      .from(calendarEvents)
+      .leftJoin(companies, eq(companies.id, calendarEvents.companyId))
+      .innerJoin(owners, eq(owners.id, calendarEvents.userId))
+      .where(
+        and(
+          sql`(${calendarEvents.startsAt} at time zone 'Europe/Rome')::date between ${from} and ${to}`,
+          scope === "mine"
+            ? eq(calendarEvents.userId, viewer.id)
+            : or(eq(calendarEvents.userId, viewer.id), isNotNull(calendarEvents.companyId)),
+        ),
+      )
+      .orderBy(asc(calendarEvents.startsAt)),
   ]);
   const assignees = await assigneesFor(taskRows.map((r) => r.t.id));
+  // Lo stesso evento nel calendario di due fondatori si mostra una volta
+  const seen = new Set<string>();
+  const events = eventRows.filter((r) => {
+    const k = `${r.e.googleId}:${r.e.startsAt.toISOString()}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   return {
     tasks: taskRows.map((r) => ({ ...r, assignees: assignees.get(r.t.id) ?? [] })),
     projects: projectRows,
     meetings: meetingRows,
+    events,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Google collegato: lo stato della propria casella e chi del team ha collegato la sua
+// ---------------------------------------------------------------------------
+
+export async function getGoogleStatus(viewer: User) {
+  const rows = await db
+    .select({
+      userId: googleAccounts.userId,
+      email: googleAccounts.email,
+      connectedAt: googleAccounts.connectedAt,
+      gmailSyncedAt: googleAccounts.gmailSyncedAt,
+      calendarSyncedAt: googleAccounts.calendarSyncedAt,
+      lastError: googleAccounts.lastError,
+    })
+    .from(googleAccounts);
+  const mine = rows.find((r) => r.userId === viewer.id) ?? null;
+  return { mine, connectedUserIds: rows.map((r) => r.userId) };
 }
