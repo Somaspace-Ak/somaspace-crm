@@ -60,6 +60,13 @@ Online l'app usa Supabase (Postgres a Londra, `eu-west-2`) e chiede il login. In
 5. **Google** (facoltativo, consigliato): attiva il provider Google in Supabase con un client OAuth di Google Cloud, aggiungi `https://<dominio>/auth/callback` tra gli URL di redirect in Supabase → Authentication → URL Configuration, poi `NEXT_PUBLIC_AUTH_GOOGLE=1`. Lo stesso progetto Google Cloud servirà per Gmail e Calendar.
 6. **Vercel**: importa il repository GitHub, incolla le stesse variabili in Settings → Environment Variables, deploy. Le funzioni girano a Londra (`vercel.json`, `lhr1`), nella stessa città del database: se il database cambia regione, va cambiata anche questa.
 
+### Google (Gmail, Calendar, login)
+
+- **Google Cloud**: progetto `somaspace-crm-513914` nell'organizzazione somaspaceagency.com, schermata di consenso *Interno*, client OAuth "Somaspace CRM web" con questi URI di reindirizzamento: `https://<progetto>.supabase.co/auth/v1/callback` (login), `https://somaspace-crm.vercel.app/api/google/callback` e `http://localhost:3000/api/google/callback` (Gmail e Calendar). API attive: Gmail e Google Calendar.
+- **Supabase**: Authentication → Providers → Google con lo stesso Client ID e Secret; URL Configuration con Site URL dell'app e redirect `https://somaspace-crm.vercel.app/auth/callback**`.
+- **Vercel**: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET` (tipo Secret) e `NEXT_PUBLIC_AUTH_GOOGLE=1` (tipo Config: le `NEXT_PUBLIC_` finiscono nel browser). Le variabili `NEXT_PUBLIC_` entrano nell'app solo a una nuova build.
+- **Sincronizzazione**: Vercel Cron chiama `/api/cron/sync` ogni 30 minuti (`vercel.json`).
+
 ## Stato del prototipo
 
 Funziona con i dati demo oppure con i dati veri importati da Notion: Oggi, Da approvare, I miei task, Companies, People, Pipeline con drag and drop, Progetti con task e sotto-task, meeting, opportunità suggerite, impostazioni e log, ricerca Cmd+K, privacy tra caselle. Si creano aziende, persone, opportunità, progetti, task e interazioni (pulsante + in alto a sinistra, Cmd+K o dalle schede) e ogni campo delle schede si modifica al clic.
