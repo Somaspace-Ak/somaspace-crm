@@ -14,8 +14,12 @@ function asDate(value: Date | string) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00Z`) : new Date(value);
 }
 
+/** "22 ott", e con l'anno se non è quello in corso ("22 ott 2025"): una data vecchia non deve sembrare recente. */
 export function formatDate(value: Date | string | null | undefined) {
-  return value ? shortDate.format(asDate(value)) : "—";
+  if (!value) return "—";
+  const d = asDate(value);
+  const sameYear = toRomeDate(d).slice(0, 4) === todayInRome().slice(0, 4);
+  return (sameYear ? shortDate : shortDateYear).format(d);
 }
 
 /** Con l'anno: per gli eventi, che coprono più anni. */
