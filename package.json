@@ -12,6 +12,7 @@
     "db:migrate": "tsx scripts/run-migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:import-notion": "tsx scripts/import-notion.ts",
+    "db:remote:check": "tsx --env-file=.env.supabase scripts/check-remote.ts",
     "db:remote:migrate": "tsx --env-file=.env.supabase scripts/run-migrate.ts",
     "db:remote:copy": "tsx --env-file=.env.supabase scripts/copy-to-remote.ts"
   },
