@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Building2, CheckSquare, FolderKanban, Inbox, KanbanSquare, Lightbulb, Plus, Sun, User } from "lucide-react";
+import { Building2, CalendarRange, CheckSquare, FolderKanban, Inbox, KanbanSquare, Lightbulb, Plus, Sun, User } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -32,6 +32,7 @@ const PAGES = [
   { label: "Oggi", href: "/", icon: Sun },
   { label: "Da approvare", href: "/da-approvare", icon: Inbox },
   { label: "Task", href: "/task", icon: CheckSquare },
+  { label: "Calendario", href: "/calendario", icon: CalendarRange },
   { label: "Pipeline", href: "/pipeline", icon: KanbanSquare },
   { label: "Opportunità suggerite", href: "/opportunita", icon: Lightbulb },
 ];

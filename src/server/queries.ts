@@ -821,3 +821,68 @@ export async function getEvent(id: string) {
   const [row] = await eventConversion(id);
   return row ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Calendario: scadenze dei task, consegne dei progetti, meeting
+// ---------------------------------------------------------------------------
+
+/**
+ * Tutto quello che cade tra `from` e `to` (date ISO, estremi inclusi).
+ * Miei: task assegnati a me, progetti di cui sono owner o nel team, meeting miei o a cui ho partecipato.
+ * I meeting privati degli altri non compaiono mai.
+ */
+export async function getCalendar(viewer: User, scope: "mine" | "team", from: string, to: string) {
+  const myProjects = db
+    .select({ id: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, viewer.id));
+  const [taskRows, projectRows, meetingRows] = await Promise.all([
+    db
+      .select({ t: tasks, project: projects })
+      .from(tasks)
+      .leftJoin(projects, eq(projects.id, tasks.projectId))
+      .where(
+        and(
+          sql`${tasks.dueOn} between ${from} and ${to}`,
+          ne(tasks.status, "proposto"),
+          scope === "mine"
+            ? inArray(tasks.id, db.select({ id: taskAssignees.taskId }).from(taskAssignees).where(eq(taskAssignees.userId, viewer.id)))
+            : undefined,
+        ),
+      )
+      .orderBy(asc(tasks.dueOn)),
+    db
+      .select({ p: projects, company: companies })
+      .from(projects)
+      .leftJoin(companies, eq(companies.id, projects.companyId))
+      .where(
+        and(
+          sql`${projects.dueOn} between ${from} and ${to}`,
+          scope === "mine" ? or(eq(projects.ownerId, viewer.id), inArray(projects.id, myProjects)) : undefined,
+        ),
+      ),
+    db
+      .select({ m: meetings, company: companies })
+      .from(meetings)
+      .leftJoin(companies, eq(companies.id, meetings.companyId))
+      .where(
+        and(
+          sql`(${meetings.occurredAt} at time zone 'Europe/Rome')::date between ${from} and ${to}`,
+          or(eq(meetings.visibility, "team"), eq(meetings.ownerId, viewer.id)),
+          scope === "mine"
+            ? or(
+                eq(meetings.ownerId, viewer.id),
+                inArray(meetings.id, db.select({ id: meetingParticipants.meetingId }).from(meetingParticipants).where(eq(meetingParticipants.userId, viewer.id))),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(meetings.occurredAt)),
+  ]);
+  const assignees = await assigneesFor(taskRows.map((r) => r.t.id));
+  return {
+    tasks: taskRows.map((r) => ({ ...r, assignees: assignees.get(r.t.id) ?? [] })),
+    projects: projectRows,
+    meetings: meetingRows,
+  };
+}

@@ -26,7 +26,8 @@ export function ScopeToggle({
   mine?: string;
   team?: string;
 }) {
-  const href = (s: Scope) => (s === fallback ? path : `${path}?vista=${s === "mine" ? "miei" : "team"}`);
+  // `path` può avere già altri parametri (es. il mese del calendario)
+  const href = (s: Scope) => (s === fallback ? path : `${path}${path.includes("?") ? "&" : "?"}vista=${s === "mine" ? "miei" : "team"}`);
   return (
     <div className="flex rounded-lg bg-secondary p-0.5 text-[12px]" role="group" aria-label="Di chi sono i record">
       {(

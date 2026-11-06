@@ -16,6 +16,7 @@ import {
   Users,
   CheckCheck,
   CalendarDays,
+  CalendarRange,
   LogOut,
 } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@/components/ui/sidebar";
@@ -127,6 +128,7 @@ export function AppSidebar({
             }
           />
           <NavItem href="/task" label="Task" icon={ListChecks} active={isActive("/task")} badge={<Count n={counts.myTasks} />} />
+          <NavItem href="/calendario" label="Calendario" icon={CalendarRange} active={isActive("/calendario")} />
         </nav>
 
         <nav className="flex flex-col gap-0.5" aria-label="Registro">
