@@ -16,7 +16,10 @@ export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 export function createDb(): Db {
   const url = process.env.DATABASE_URL;
   if (url) {
-    return drizzlePostgres({ client: postgres(url, { prepare: false }), schema }) as unknown as Db;
+    // Pooler di Supabase in modalità transaction: niente prepared statement e una query alla volta per connessione.
+    // postgres 4 di default ne accoda fino a 100 sulla stessa connessione e il pooler le lascia appese.
+    const client = postgres(url, { prepare: false, max_pipeline: 1, max: 5, idle_timeout: 20 });
+    return drizzlePostgres({ client, schema }) as unknown as Db;
   }
   const dir = process.env.PGLITE_DIR ?? "./.data/pglite";
   mkdirSync(dirname(dir), { recursive: true });
