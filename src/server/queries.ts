@@ -228,7 +228,7 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
 export async function getNavCounts(viewer: User) {
   const today = todayInRome();
   const { entries } = await getTodayEntriesCount(viewer, today);
-  const approvals = await countApprovals();
+  const approvals = await countApprovals(viewer);
   const [{ n: myTasks }] = await db
     .select({ n: sql<number>`count(distinct ${tasks.id})::int` })
     .from(tasks)
@@ -252,21 +252,46 @@ async function getTodayEntriesCount(viewer: User, today: string) {
   return { entries: queue.filter((i) => owner.get(i.id) === viewer.id).length };
 }
 
-export async function countApprovals() {
-  const [[a], [b], [c], [d]] = await Promise.all([
-    db.select({ n: sql<number>`count(*)::int` }).from(people).where(eq(people.status, "da_approvare")),
-    db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(people)
-      .where(
+/**
+ * Da approvare è personale: ognuno vede quello che arriva dalla sua casella o riguarda i suoi record.
+ * Quello senza owner resta visibile a tutti, così non si perde.
+ */
+function approvalFilters(viewer: User) {
+  const mineOrNobody = (col: typeof people.ownerId | typeof companies.ownerId) => or(eq(col, viewer.id), isNull(col));
+  return {
+    newPeople: and(eq(people.status, "da_approvare"), mineOrNobody(people.ownerId)),
+    modeChanges: and(
+      isNotNull(people.proposedMode),
+      or(isNull(people.followupMode), ne(people.followupMode, people.proposedMode)),
+      eq(people.status, "attivo"),
+      mineOrNobody(people.ownerId),
+    ),
+    // Task proposti: assegnati a me, oppure senza assegnatario su un progetto mio o senza owner
+    tasks: and(
+      eq(tasks.status, "proposto"),
+      or(
+        sql`exists (select 1 from task_assignees ta where ta.task_id = ${tasks.id} and ta.user_id = ${viewer.id})`,
         and(
-          isNotNull(people.proposedMode),
-          or(isNull(people.followupMode), ne(people.followupMode, people.proposedMode)),
-          eq(people.status, "attivo"),
+          sql`not exists (select 1 from task_assignees ta where ta.task_id = ${tasks.id})`,
+          or(isNull(projects.ownerId), eq(projects.ownerId, viewer.id)),
         ),
       ),
-    db.select({ n: sql<number>`count(*)::int` }).from(tasks).where(eq(tasks.status, "proposto")),
-    db.select({ n: sql<number>`count(*)::int` }).from(companies).where(eq(companies.dataStatus, "da_verificare")),
+    ),
+    toVerify: and(eq(companies.dataStatus, "da_verificare"), mineOrNobody(companies.ownerId)),
+  };
+}
+
+export async function countApprovals(viewer: User) {
+  const f = approvalFilters(viewer);
+  const [[a], [b], [c], [d]] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(people).where(f.newPeople),
+    db.select({ n: sql<number>`count(*)::int` }).from(people).where(f.modeChanges),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .leftJoin(projects, eq(projects.id, tasks.projectId))
+      .where(f.tasks),
+    db.select({ n: sql<number>`count(*)::int` }).from(companies).where(f.toVerify),
   ]);
   return a.n + b.n + c.n + d.n;
 }
@@ -279,7 +304,8 @@ export async function getFormOptions() {
     db
       .select({ id: people.id, firstName: people.firstName, lastName: people.lastName, companyId: people.companyId })
       .from(people)
-      .where(ne(people.status, "archiviato"))
+      // I contatti da approvare non sono ancora nel CRM: li vede solo chi li deve approvare
+      .where(eq(people.status, "attivo"))
       .orderBy(asc(people.firstName)),
     db.select({ id: projects.id, name: projects.name }).from(projects).where(ne(projects.status, "chiuso")).orderBy(asc(projects.name)),
   ]);
@@ -298,7 +324,8 @@ export async function getSearchIndex() {
       .select({ id: people.id, firstName: people.firstName, lastName: people.lastName, company: companies.name })
       .from(people)
       .leftJoin(companies, eq(companies.id, people.companyId))
-      .where(ne(people.status, "archiviato"))
+      // I contatti da approvare non sono ancora nel CRM: li vede solo chi li deve approvare
+      .where(eq(people.status, "attivo"))
       .orderBy(asc(people.firstName)),
     db
       .select({ id: opportunities.id, name: opportunities.name, company: companies.name })
@@ -637,31 +664,26 @@ export async function getMeeting(id: string, viewer: User) {
 // Da approvare
 // ---------------------------------------------------------------------------
 
-export async function getApprovals() {
+export async function getApprovals(viewer: User) {
+  const f = approvalFilters(viewer);
   const [newPeople, modeChanges, proposedTasks, toVerify] = await Promise.all([
     db
       .select({ p: people, company: companies })
       .from(people)
       .leftJoin(companies, eq(companies.id, people.companyId))
-      .where(eq(people.status, "da_approvare")),
+      .where(f.newPeople),
     db
       .select({ p: people, company: companies })
       .from(people)
       .leftJoin(companies, eq(companies.id, people.companyId))
-      .where(
-        and(
-          isNotNull(people.proposedMode),
-          or(isNull(people.followupMode), ne(people.followupMode, people.proposedMode)),
-          eq(people.status, "attivo"),
-        ),
-      ),
+      .where(f.modeChanges),
     db
       .select({ t: tasks, project: projects })
       .from(tasks)
       .leftJoin(projects, eq(projects.id, tasks.projectId))
-      .where(eq(tasks.status, "proposto"))
+      .where(f.tasks)
       .orderBy(asc(tasks.dueOn)),
-    db.select().from(companies).where(eq(companies.dataStatus, "da_verificare")),
+    db.select().from(companies).where(f.toVerify),
   ]);
   const assignees = await assigneesFor(proposedTasks.map((r) => r.t.id));
   return {

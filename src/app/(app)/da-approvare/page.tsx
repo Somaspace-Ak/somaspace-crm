@@ -45,13 +45,13 @@ function Decide({ accept, discard, acceptLabel = "Accetta" }: { accept: () => Pr
 }
 
 async function Approvals() {
-  await getViewer();
-  const a = await getApprovals();
+  const { viewer } = await getViewer();
+  const a = await getApprovals(viewer);
   const total = a.newPeople.length + a.modeChanges.length + a.proposedTasks.length + a.toVerify.length;
 
   return (
     <>
-      <PageHeader title="Da approvare" description="Quello che l'agente propone. Niente entra nel CRM senza il vostro sì." />
+      <PageHeader title="Da approvare" description="Quello che l'agente propone a te: dalla tua casella e sui tuoi contatti. Niente entra nel CRM senza il tuo sì." />
       <div className="flex max-w-4xl flex-col gap-8 p-4 md:p-6">
         {total === 0 ? <EmptyState>Niente da approvare.</EmptyState> : null}
 

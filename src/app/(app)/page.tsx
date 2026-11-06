@@ -41,7 +41,7 @@ async function Today({ searchParams }: PageProps<"/">) {
   const { vista, tutte } = await searchParams;
   const scope = parseScope(vista, "mine");
   const { viewer } = await getViewer();
-  const [data, approvals] = await Promise.all([getToday(viewer, scope), countApprovals()]);
+  const [data, approvals] = await Promise.all([getToday(viewer, scope), countApprovals(viewer)]);
   const total = data.entries.length;
   const lateTotal = data.entries.filter((e) => e.daysLate > 0).length;
   const wrote = data.entries.filter((e) => e.section === "ti_hanno_scritto").length;

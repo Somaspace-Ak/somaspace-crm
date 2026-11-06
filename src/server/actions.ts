@@ -264,11 +264,12 @@ export async function acceptModeProposal(id: string) {
 }
 
 /** Dopo la migrazione arrivano decine di proposte: si possono confermare tutte insieme. */
+/** Accetta tutte le proposte di modalità che vedo io: sui miei contatti o senza owner. */
 export async function acceptAllModeProposals() {
-  await requireViewer();
+  const viewer = await requireViewer();
   await db.execute(sql`
     update people set followup_mode = proposed_mode, proposed_mode = null, proposed_mode_reason = null
-    where proposed_mode is not null and status = 'attivo'
+    where proposed_mode is not null and status = 'attivo' and (owner_id = ${viewer.id} or owner_id is null)
   `);
   await recomputeFollowups(db);
   refresh();
