@@ -76,7 +76,7 @@ export function GoogleConnection({
                 <RefreshCw className={pending ? "animate-spin" : undefined} aria-hidden />
                 {pending ? "Leggo…" : "Sincronizza ora"}
               </Button>
-              {mine.lastError ? (
+              {mine.lastError?.includes("revocato") ? (
                 <Button size="sm" asChild>
                   <a href="/api/google/connect">Ricollega</a>
                 </Button>

@@ -216,12 +216,17 @@ async function syncGmail(db: Db, acc: Account, token: string, ctx: Ctx, started:
       const res = await recordMessages(db, acc.userId, token, ctx, await unknownIds(db, acc.userId, ids), false, touched);
       r2 = { recorded: r2.recorded + res.recorded, proposed: r2.proposed + res.proposed };
       cursor++;
+      backfillDone = cursor * BACKFILL_CHUNK >= addresses.length;
+      // Salvato a ogni blocco: se il giro si interrompe, il prossimo riparte da qui
+      await db
+        .update(googleAccounts)
+        .set({ gmailBackfillCursor: cursor, gmailBackfillDoneAt: backfillDone ? new Date() : null })
+        .where(eq(googleAccounts.userId, acc.userId));
     }
-    backfillDone = cursor * BACKFILL_CHUNK >= addresses.length;
-    await db
-      .update(googleAccounts)
-      .set({ gmailBackfillCursor: cursor, gmailBackfillDoneAt: backfillDone ? new Date() : null })
-      .where(eq(googleAccounts.userId, acc.userId));
+    if (cursor * BACKFILL_CHUNK >= addresses.length && !backfillDone) {
+      backfillDone = true;
+      await db.update(googleAccounts).set({ gmailBackfillDoneAt: new Date() }).where(eq(googleAccounts.userId, acc.userId));
+    }
   }
 
   if (touched.size) {
@@ -345,7 +350,14 @@ export async function syncGoogleAccount(db: Db, userId: string): Promise<SyncRes
     return { ok: true, ...mail, ...cal };
   } catch (e) {
     const revoked = e instanceof GoogleError && /invalid_grant/.test(`${e.code} ${e.message}`);
-    const error = revoked ? "Accesso a Google revocato o scaduto: ricollega l'account" : e instanceof Error ? e.message : String(e);
+    const quota = e instanceof GoogleError && e.code === "quota";
+    const error = revoked
+      ? "Accesso a Google revocato o scaduto: ricollega l'account"
+      : quota
+        ? "Google ha chiesto di rallentare (limite di richieste al minuto). Il prossimo giro riprende da dove si è fermato."
+        : e instanceof Error
+          ? e.message
+          : String(e);
     await db.update(googleAccounts).set({ lastError: error }).where(eq(googleAccounts.userId, userId));
     await db.insert(agentLog).values({ action: "sync_google", outcome: "errore", detail: `${acc.email}: ${error}`, onBehalfOf: userId });
     return { ok: false, error };
