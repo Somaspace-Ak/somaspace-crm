@@ -189,8 +189,11 @@ const BACKFILL_CHUNK = 10;
 const BACKFILL_DAYS = 730;
 /** Email al massimo per blocco: le più recenti con quei contatti. */
 const BACKFILL_PER_CHUNK = 150;
-/** Tempo massimo di un giro: lo storico continua al giro successivo. */
-const TIME_BUDGET_MS = 180_000;
+/**
+ * Tempo massimo dello storico in un giro: lo storico continua al giro successivo.
+ * Vercel ferma la funzione a 300 secondi: si resta ben sotto, con il calendario e le email recenti.
+ */
+const TIME_BUDGET_MS = 150_000;
 
 type Account = typeof googleAccounts.$inferSelect;
 
@@ -372,9 +375,9 @@ export async function syncGoogleAccount(db: Db, userId: string): Promise<SyncRes
   }
 }
 
+/** Le caselle si leggono in parallelo: il limite di Google è per utente, quindi non si disturbano. */
 export async function syncAllGoogleAccounts(db: Db) {
   const accounts = await db.select({ userId: googleAccounts.userId }).from(googleAccounts);
-  const results = [];
-  for (const a of accounts) results.push({ userId: a.userId, ...(await syncGoogleAccount(db, a.userId)) });
+  const results = await Promise.all(accounts.map(async (a) => ({ userId: a.userId, ...(await syncGoogleAccount(db, a.userId)) })));
   return results;
 }
