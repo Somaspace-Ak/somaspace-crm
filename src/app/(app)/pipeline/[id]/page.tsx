@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { FinanceBlock } from "@/components/crm/finance-block";
+import { canSeeFinance } from "@/server/finance";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { CompanyLogo, HealthChip, StageChip, StepBar } from "@/components/crm/chips";
@@ -106,6 +108,12 @@ async function Opportunity({ params }: PageProps<"/pipeline/[id]">) {
                 <span className="whitespace-pre-wrap text-sm text-foreground/80">{o.notes}</span>
               </InlineField>
             </SideBlock>
+            {o.stage === "vinta" && canSeeFinance(viewer) ? (
+              <FinanceBlock
+                filter={{ opportunityId: o.id }}
+                defaults={{ direction: "entrata", category: "contratto", title: o.name, companyId: o.companyId, projectId: project?.id, opportunityId: o.id }}
+              />
+            ) : null}
             {project ? (
               <SideBlock title="Progetto">
                 <Link href={`/progetti/${project.id}`} className="flex items-center justify-between gap-2 rounded-[10px] border bg-card p-3 hover:bg-muted/40">

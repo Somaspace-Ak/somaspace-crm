@@ -7,12 +7,17 @@ import { db } from "@/db";
 import {
   agentLog,
   calendarEvents,
+  cashCategoryEnum,
+  cashCertaintyEnum,
+  cashMovements,
+  cashStatusEnum,
   companies,
   dataStatusEnum,
   excludedAddresses,
   followupModeEnum,
   googleAccounts,
   healthEnum,
+  meetings,
   interactionPeople,
   interactions,
   languageEnum,
@@ -23,6 +28,7 @@ import {
   projectMembers,
   projects,
   projectStatusEnum,
+  recontactProposals,
   relationshipEnum,
   services,
   settings,
@@ -30,13 +36,16 @@ import {
   taskAssignees,
   tasks,
   taskStatusEnum,
+  users,
 } from "@/db/schema";
+import { todayInRome } from "@/lib/followup/dates";
 import { formatEuro } from "@/lib/format";
 import { recomputeFollowups, refreshLastInteractions } from "./followups";
 import { requireViewer } from "./session";
 import { runSuggestionRules } from "./suggestions";
 import { decrypt } from "./crypto";
 import { revoke as revokeGoogle } from "./google/client";
+import { upsertMeetingInteraction } from "./google/meetings";
 import { syncGoogleAccount } from "./google/sync";
 
 /**
@@ -406,12 +415,40 @@ const taskFields = {
   projectId: uuid,
 };
 
+const meetingFields = {
+  title: required("Titolo"),
+  companyId: uuid,
+  projectId: uuid,
+  summary: optionalText,
+  visibility: z.enum(["privata", "team"]),
+};
+
+// Voci di cassa (Finanza): solo i fondatori
+const movementFields = {
+  title: required("Voce"),
+  amount: z.coerce.number().positive("L'importo deve essere positivo").max(100_000_000),
+  direction: z.enum(["entrata", "uscita"]),
+  category: z.enum(cashCategoryEnum.enumValues),
+  dueOn: isoDate,
+  status: z.enum(cashStatusEnum.enumValues),
+  paidOn: isoDate,
+  certainty: z.enum(cashCertaintyEnum.enumValues),
+  companyId: uuid,
+  counterparty: optionalText,
+  projectId: uuid,
+  userId: uuid,
+  invoiceRef: optionalText,
+  notes: optionalText,
+};
+
 const ENTITIES = {
   company: { table: companies, fields: companyFields },
   person: { table: people, fields: personFields },
   opportunity: { table: opportunities, fields: opportunityFields },
   project: { table: projects, fields: projectFields },
   task: { table: tasks, fields: taskFields },
+  meeting: { table: meetings, fields: meetingFields },
+  movement: { table: cashMovements, fields: movementFields },
 } as const;
 
 export type Entity = keyof typeof ENTITIES;
@@ -421,6 +458,7 @@ export async function updateField(entity: Entity, id: string, field: string, val
   const viewer = await requireViewer();
   const config = ENTITIES[entity];
   if (!config) return fail("Record sconosciuto");
+  if (entity === "movement" && viewer.role !== "fondatore") return fail("La finanza è riservata ai fondatori");
   const schema = (config.fields as Record<string, z.ZodType>)[field];
   if (!schema) return fail("Questo campo non si modifica da qui");
   const parsed = schema.safeParse(value === "" && field !== "email" ? null : value);
@@ -450,6 +488,9 @@ export async function updateField(entity: Entity, id: string, field: string, val
   const patch: Record<string, unknown> = { [field]: next };
   if ("updatedAt" in table) patch.updatedAt = new Date();
   if (entity === "task" && field === "status") patch.completedAt = next === "fatto" ? new Date() : null;
+  // Pagato vuol dire passato dalla banca: con la data, oggi se non la si dice
+  if (entity === "movement" && field === "status") patch.paidOn = next === "pagato" ? todayInRome() : null;
+  if (entity === "movement" && field === "paidOn" && next) patch.status = "pagato";
   if (entity === "opportunity" && field === "quoteSentOn" && next && previous?.stage === "lead") patch.stage = "in_progress";
 
   const updated = await db
@@ -474,6 +515,22 @@ export async function updateField(entity: Entity, id: string, field: string, val
         opportunityId: id,
       });
     }
+  }
+
+  // Meeting collegato a mano: la sincronizzazione non lo sposta più, e la timeline segue
+  if (entity === "meeting") {
+    const extra: Partial<typeof meetings.$inferInsert> = {};
+    if (field === "companyId" || field === "projectId") extra.linkedManually = true;
+    if (field === "projectId" && next) {
+      const [prj] = await db.select({ companyId: projects.companyId }).from(projects).where(eq(projects.id, next));
+      const current = updated[0] as typeof meetings.$inferSelect;
+      if (prj?.companyId && !current.companyId) extra.companyId = prj.companyId;
+    }
+    const [m] = Object.keys(extra).length
+      ? await db.update(meetings).set(extra).where(eq(meetings.id, id)).returning()
+      : (updated as (typeof meetings.$inferSelect)[]);
+    await upsertMeetingInteraction(db, m);
+    await refreshLastInteractions(db);
   }
 
   if (entity === "person" && ["followupMode", "snoozeUntil"].includes(field)) {
@@ -759,12 +816,12 @@ export async function saveSuggestionSettings(input: z.input<typeof suggestionSet
 // Google: sincronizzazione a mano e scollegamento, solo della propria casella
 // ---------------------------------------------------------------------------
 
-export async function syncMyGoogle(): Promise<Result<{ recorded: number; proposed: number; events: number; more: boolean }>> {
+export async function syncMyGoogle(): Promise<Result<{ recorded: number; proposed: number; events: number; meetings: number; more: boolean }>> {
   const viewer = await requireViewer();
   const res = await syncGoogleAccount(db, viewer.id);
   refresh();
   if (!res.ok) return fail(res.error);
-  return { ok: true, data: { recorded: res.recorded, proposed: res.proposed, events: res.events, more: res.more } };
+  return { ok: true, data: { recorded: res.recorded, proposed: res.proposed, events: res.events, meetings: res.meetings, more: res.more } };
 }
 
 /** Revoca l'accesso a Google e toglie gli eventi del calendario. Le email già registrate restano, private. */
@@ -824,4 +881,96 @@ export async function discardPeople(ids: string[]): Promise<Result<{ updated: nu
   }
   refresh();
   return { ok: true, data: { updated: rows.length } };
+}
+
+// ---------------------------------------------------------------------------
+// Proposte di ricontatto
+// ---------------------------------------------------------------------------
+
+const proposalInput = z
+  .object({
+    personId: uuid,
+    companyId: uuid,
+    reason: z.string().trim().min(3, "Scrivi perché risentirlo").max(2000),
+    idea: optionalText,
+  })
+  .refine((v) => v.personId || v.companyId, "Scegli una persona o un'azienda");
+
+export async function createProposal(input: z.input<typeof proposalInput>): Promise<Result> {
+  const viewer = await requireViewer();
+  const parsed = proposalInput.safeParse(input);
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  const v = parsed.data;
+  let companyId = v.companyId ?? null;
+  if (v.personId && !companyId) {
+    const [p] = await db.select({ companyId: people.companyId }).from(people).where(eq(people.id, v.personId));
+    if (!p) return fail("Persona non trovata");
+    companyId = p.companyId;
+  }
+  const [row] = await db
+    .insert(recontactProposals)
+    .values({ personId: v.personId ?? null, companyId, proposedBy: viewer.id, reason: v.reason, idea: v.idea ?? null })
+    .returning({ id: recontactProposals.id });
+  refresh();
+  return { ok: true, data: { id: row.id } };
+}
+
+/**
+ * Approvare apre un task "Ricontattare" per chi segue il contatto (o per chi l'ha proposto),
+ * con il perché e l'idea nella descrizione. Scartare chiude la proposta e basta.
+ */
+export async function decideProposal(id: string, decision: "approvata" | "scartata", note?: string): Promise<Result<{ taskId: string | null }>> {
+  const viewer = await requireViewer();
+  const [p] = await db.select().from(recontactProposals).where(eq(recontactProposals.id, id));
+  if (!p) return fail("Proposta non trovata");
+  if (p.status !== "aperta") return fail("Questa proposta è già stata decisa");
+  const decisionNote = note?.trim().slice(0, 2000) || null;
+  let taskId: string | null = null;
+  if (decision === "approvata") {
+    const [person] = p.personId ? await db.select().from(people).where(eq(people.id, p.personId)) : [];
+    const [company] = p.companyId ? await db.select().from(companies).where(eq(companies.id, p.companyId)) : [];
+    const who = person ? `${person.firstName} ${person.lastName}`.trim() : (company?.name ?? "il contatto");
+    const assignee = person?.ownerId ?? company?.ownerId ?? p.proposedBy;
+    const due = new Date(Date.now() + 3 * 86_400_000).toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" });
+    const [proposer] = await db.select({ name: users.name }).from(users).where(eq(users.id, p.proposedBy));
+    const description = [
+      `Proposta di ${proposer?.name ?? "un fondatore"}: ${p.reason}`,
+      p.idea ? `Idea: ${p.idea}` : null,
+      decisionNote ? `Nota: ${decisionNote}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const [t] = await db
+      .insert(tasks)
+      .values({
+        title: `Ricontattare ${who}`,
+        description,
+        companyId: p.companyId,
+        personId: p.personId,
+        dueOn: due,
+        priority: "media",
+        createdBy: viewer.id,
+      })
+      .returning({ id: tasks.id });
+    await db.insert(taskAssignees).values({ taskId: t.id, userId: assignee });
+    taskId = t.id;
+  }
+  await db
+    .update(recontactProposals)
+    .set({ status: decision, decidedBy: viewer.id, decidedAt: new Date(), decisionNote, taskId })
+    .where(eq(recontactProposals.id, id));
+  refresh();
+  return { ok: true, data: { taskId } };
+}
+
+/** Chi ha proposto può ritirare la proposta finché è aperta. */
+export async function withdrawProposal(id: string): Promise<Result<{ id: string }>> {
+  const viewer = await requireViewer();
+  const deleted = await db
+    .delete(recontactProposals)
+    .where(and(eq(recontactProposals.id, id), eq(recontactProposals.proposedBy, viewer.id), eq(recontactProposals.status, "aperta")))
+    .returning({ id: recontactProposals.id });
+  if (!deleted.length) return fail("Puoi ritirare solo le tue proposte ancora aperte");
+  refresh();
+  return { ok: true, data: { id } };
 }

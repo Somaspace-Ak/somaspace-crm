@@ -24,7 +24,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
 async function Navigation() {
   const { viewer, team } = await getViewer();
   const [counts, entries, options] = await Promise.all([getNavCounts(viewer), getSearchIndex(), getFormOptions()]);
-  const toNav = (u: typeof viewer) => ({ id: u.id, name: u.name, email: u.email, initials: u.initials });
+  const toNav = (u: typeof viewer) => ({ id: u.id, name: u.name, email: u.email, initials: u.initials, role: u.role });
   return (
     <>
       <AppSidebar viewer={toNav(viewer)} team={team.filter((u) => u.active).map(toNav)} counts={counts} />

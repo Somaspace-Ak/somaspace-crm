@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
     return back("account-diverso");
   }
   const granted = tokens.scope.split(" ");
-  if (!GOOGLE_SCOPES.slice(2).every((s) => granted.includes(s))) return back("permessi-mancanti");
+  // Gmail e Calendar servono; Drive (solo i file di Meet) è facoltativo: senza, niente note di Gemini
+  if (!GOOGLE_SCOPES.slice(2, 4).every((s) => granted.includes(s))) return back("permessi-mancanti");
   if (!tokens.refresh_token) return back("errore");
 
   const values = { email: tokens.email, refreshToken: encrypt(tokens.refresh_token), scopes: granted, lastError: null };

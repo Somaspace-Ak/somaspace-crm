@@ -85,7 +85,8 @@ export function InlineField({
   }
 
   if (editing) {
-    const initial = Array.isArray(value) ? value.join(", ") : value == null ? "" : String(value);
+    // I numeri si scrivono all'italiana (1.159,50): il punto è il separatore delle migliaia
+    const initial = Array.isArray(value) ? value.join(", ") : value == null ? "" : type === "number" ? String(value).replace(".", ",") : String(value);
     const commit = (raw: string) => {
       if (type === "tags") save(raw.split(",").map((t) => t.trim()).filter(Boolean));
       else if (type === "number") save(raw.trim() ? Number(raw.replace(/\./g, "").replace(",", ".")) : null);

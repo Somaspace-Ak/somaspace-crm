@@ -16,6 +16,7 @@ import {
   interactions,
   meetingParticipants,
   meetings,
+  recontactProposals,
   opportunities,
   people,
   projectMembers,
@@ -42,6 +43,70 @@ function visibleTo(viewer: User) {
 }
 
 const owners = alias(users, "owner");
+
+/**
+ * Meeting: quelli con un cliente sono del team; le riunioni interne solo di chi c'era
+ * (chi l'ha registrato e i fondatori invitati).
+ */
+function meetingVisibleTo(viewer: User) {
+  return or(
+    eq(meetings.visibility, "team"),
+    eq(meetings.ownerId, viewer.id),
+    inArray(meetings.id, db.select({ id: meetingParticipants.meetingId }).from(meetingParticipants).where(eq(meetingParticipants.userId, viewer.id))),
+  );
+}
+
+/** I meeting fatti, dal più recente: di un cliente, di una persona, di un progetto, o tutti. */
+export async function listMeetings(
+  viewer: User,
+  filter: { companyId?: string; personId?: string; projectId?: string; scope?: "mine" | "team"; withRecap?: boolean } = {},
+) {
+  const rows = await db
+    .select({
+      m: {
+        id: meetings.id,
+        title: meetings.title,
+        occurredAt: meetings.occurredAt,
+        endsAt: meetings.endsAt,
+        summary: meetings.summary,
+        nextSteps: meetings.nextSteps,
+        docs: meetings.docs,
+        visibility: meetings.visibility,
+        hasTranscript: sql<boolean>`${meetings.transcript} is not null`,
+        hasNotes: sql<boolean>`${meetings.notes} is not null`,
+      },
+      company: { id: companies.id, name: companies.name },
+      project: { id: projects.id, name: projects.name },
+      owner: { id: owners.id, name: owners.name, initials: owners.initials },
+    })
+    .from(meetings)
+    .leftJoin(companies, eq(companies.id, meetings.companyId))
+    .leftJoin(projects, eq(projects.id, meetings.projectId))
+    .leftJoin(owners, eq(owners.id, meetings.ownerId))
+    .where(
+      and(
+        meetingVisibleTo(viewer),
+        sql`${meetings.occurredAt} <= now()`,
+        filter.companyId ? eq(meetings.companyId, filter.companyId) : undefined,
+        filter.projectId ? eq(meetings.projectId, filter.projectId) : undefined,
+        filter.personId
+          ? inArray(meetings.id, db.select({ id: meetingParticipants.meetingId }).from(meetingParticipants).where(eq(meetingParticipants.personId, filter.personId)))
+          : undefined,
+        filter.scope === "mine"
+          ? or(
+              eq(meetings.ownerId, viewer.id),
+              inArray(meetings.id, db.select({ id: meetingParticipants.meetingId }).from(meetingParticipants).where(eq(meetingParticipants.userId, viewer.id))),
+            )
+          : undefined,
+        filter.withRecap ? or(isNotNull(meetings.summary), isNotNull(meetings.transcript)) : undefined,
+      ),
+    )
+    .orderBy(desc(meetings.occurredAt))
+    .limit(300);
+  return rows;
+}
+
+export type MeetingRow = Awaited<ReturnType<typeof listMeetings>>[number];
 
 // ---------------------------------------------------------------------------
 // Oggi
@@ -161,7 +226,8 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
       .select({ m: meetings, company: companies })
       .from(meetings)
       .leftJoin(companies, eq(companies.id, meetings.companyId))
-      .where(sql`(${meetings.occurredAt} at time zone 'Europe/Rome')::date = ${today}::date`)
+      // I meeting dal Google Calendar compaiono già come eventi: qui solo quelli registrati a mano
+      .where(and(sql`(${meetings.occurredAt} at time zone 'Europe/Rome')::date = ${today}::date`, isNull(meetings.googleEventId), meetingVisibleTo(viewer)))
       .orderBy(asc(meetings.occurredAt)),
     db
       .select({ f: facts, company: companies })
@@ -240,7 +306,11 @@ export async function getNavCounts(viewer: User) {
     .select({ n: sql<number>`count(*)::int` })
     .from(suggestions)
     .where(eq(suggestions.status, "nuovo"));
-  return { today: entries, approvals, myTasks, suggestions: newSuggestions };
+  const [{ n: proposals }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(recontactProposals)
+    .where(eq(recontactProposals.status, "aperta"));
+  return { today: entries, approvals, myTasks, suggestions: newSuggestions, proposals };
 }
 
 async function getTodayEntriesCount(viewer: User, today: string) {
@@ -390,7 +460,8 @@ export async function getCompany(id: string, viewer: User) {
     db.select().from(facts).where(and(eq(facts.companyId, id), isNull(facts.retractedAt))).orderBy(desc(facts.createdAt)),
     getTimeline(viewer, { companyId: id }),
   ]);
-  return { ...row, people: peopleRows, opportunities: opps, projects: prjs, facts: factRows, timeline };
+  const [meetingRows, proposalRows] = await Promise.all([listMeetings(viewer, { companyId: id }), getProposals(undefined, { companyId: id })]);
+  return { ...row, people: peopleRows, opportunities: opps, projects: prjs, facts: factRows, timeline, meetings: meetingRows, proposals: proposalRows };
 }
 
 // ---------------------------------------------------------------------------
@@ -433,8 +504,9 @@ export async function getPerson(id: string, viewer: User) {
     db.select().from(facts).where(and(eq(facts.personId, id), isNull(facts.retractedAt))),
     getTimeline(viewer, { personId: id }),
   ]);
+  const [meetingRows, proposalRows] = await Promise.all([listMeetings(viewer, { personId: id }), getProposals(undefined, { personId: id })]);
   const openQuote = opps.find((o) => o.stage === "in_progress");
-  return { ...row, opportunities: opps, facts: factRows, timeline, openQuote };
+  return { ...row, opportunities: opps, facts: factRows, timeline, openQuote, meetings: meetingRows, proposals: proposalRows };
 }
 
 // ---------------------------------------------------------------------------
@@ -609,7 +681,7 @@ export async function getProject(id: string, viewer: User) {
   );
   const [taskRows, meetingRows, factRows, timeline, team, eventRows] = await Promise.all([
     db.select().from(tasks).where(eq(tasks.projectId, id)).orderBy(asc(tasks.dueOn)),
-    db.select().from(meetings).where(eq(meetings.projectId, id)).orderBy(desc(meetings.occurredAt)),
+    listMeetings(viewer, { projectId: id }),
     db.select().from(facts).where(and(eq(facts.projectId, id), isNull(facts.retractedAt))),
     getTimeline(viewer, { projectId: id }),
     db.select({ u: users }).from(projectMembers).innerJoin(users, eq(users.id, projectMembers.userId)).where(eq(projectMembers.projectId, id)),
@@ -641,7 +713,7 @@ export async function getProject(id: string, viewer: User) {
   return {
     ...row,
     tasks: roots,
-    meetings: meetingRows.map((m) => ({ ...m, transcript: m.ownerId === viewer.id ? m.transcript : null })),
+    meetings: meetingRows,
     facts: factRows,
     timeline,
     team: team.map((t) => t.u),
@@ -695,7 +767,8 @@ export async function getMeeting(id: string, viewer: User) {
     .leftJoin(owners, eq(owners.id, meetings.ownerId))
     .where(eq(meetings.id, id));
   if (!row) return null;
-  if (row.m.visibility === "privata" && row.m.ownerId !== viewer.id) return null;
+  const [visible] = await db.select({ id: meetings.id }).from(meetings).where(and(eq(meetings.id, id), meetingVisibleTo(viewer)));
+  if (!visible) return null;
   const [parts, proposed] = await Promise.all([
     db
       .select({ person: people, user: users })
@@ -707,9 +780,9 @@ export async function getMeeting(id: string, viewer: User) {
   ]);
   return {
     ...row,
-    m: { ...row.m, transcript: row.m.ownerId === viewer.id ? row.m.transcript : null },
     participants: parts,
     tasks: proposed,
+    upcoming: row.m.occurredAt.getTime() > Date.now(),
   };
 }
 
@@ -777,6 +850,34 @@ export async function getSuggestions(ownerId?: string) {
   ]);
   return { suggestions: rows, services: svc, grants: grantRows, lastRun: lastRun[0] ?? null };
 }
+
+// ---------------------------------------------------------------------------
+// Proposte di ricontatto
+// ---------------------------------------------------------------------------
+
+const deciders = alias(users, "decider");
+
+/** Le proposte di tutto il team, o solo le mie (`proposedBy`). Le aperte prima. */
+export async function getProposals(proposedBy?: string, filter?: { personId?: string; companyId?: string }) {
+  return db
+    .select({ r: recontactProposals, person: people, company: companies, proposer: owners, decider: deciders, task: tasks })
+    .from(recontactProposals)
+    .innerJoin(owners, eq(owners.id, recontactProposals.proposedBy))
+    .leftJoin(deciders, eq(deciders.id, recontactProposals.decidedBy))
+    .leftJoin(people, eq(people.id, recontactProposals.personId))
+    .leftJoin(companies, eq(companies.id, recontactProposals.companyId))
+    .leftJoin(tasks, eq(tasks.id, recontactProposals.taskId))
+    .where(
+      and(
+        proposedBy ? eq(recontactProposals.proposedBy, proposedBy) : undefined,
+        filter?.personId ? eq(recontactProposals.personId, filter.personId) : undefined,
+        filter?.companyId ? eq(recontactProposals.companyId, filter.companyId) : undefined,
+      ),
+    )
+    .orderBy(desc(recontactProposals.createdAt));
+}
+
+export type ProposalRow = Awaited<ReturnType<typeof getProposals>>[number];
 
 export async function getSettingsPage() {
   const [followup, rows, excluded] = await Promise.all([
@@ -944,6 +1045,7 @@ export async function getCalendar(viewer: User, scope: "mine" | "team", from: st
       .leftJoin(companies, eq(companies.id, meetings.companyId))
       .where(
         and(
+          isNull(meetings.googleEventId),
           sql`(${meetings.occurredAt} at time zone 'Europe/Rome')::date between ${from} and ${to}`,
           or(eq(meetings.visibility, "team"), eq(meetings.ownerId, viewer.id)),
           scope === "mine"
@@ -1002,8 +1104,11 @@ export async function getGoogleStatus(viewer: User) {
       calendarSyncedAt: googleAccounts.calendarSyncedAt,
       backfillDoneAt: googleAccounts.gmailBackfillDoneAt,
       lastError: googleAccounts.lastError,
+      scopes: googleAccounts.scopes,
     })
     .from(googleAccounts);
-  const mine = rows.find((r) => r.userId === viewer.id) ?? null;
+  const row = rows.find((r) => r.userId === viewer.id);
+  // Note di Gemini e trascrizioni richiedono il permesso su Drive (solo file di Meet), arrivato dopo
+  const mine = row ? { ...row, meetDocs: row.scopes.includes("https://www.googleapis.com/auth/drive.meet.readonly") } : null;
   return { mine, connectedUserIds: rows.map((r) => r.userId) };
 }

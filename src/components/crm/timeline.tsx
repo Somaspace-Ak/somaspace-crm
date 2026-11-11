@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, Euro, FileText, Lock, Mic, Phone, Users } from "lucide-react";
 import type { TimelineItem } from "@/server/queries";
 import { formatDate, formatTime } from "@/lib/format";
@@ -31,7 +32,13 @@ export function Timeline({ items }: { items: TimelineItem[] & { hiddenCount?: nu
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <span className="text-sm font-medium">{i.title}</span>
+                  {i.meetingId ? (
+                    <Link href={`/meeting/${i.meetingId}`} className="text-sm font-medium hover:underline">
+                      {i.title}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-medium">{i.title}</span>
+                  )}
                   {i.visibility === "privata" ? <PrivateMark /> : null}
                 </div>
                 <div className="text-xs text-muted-foreground">

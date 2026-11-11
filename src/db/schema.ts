@@ -294,8 +294,21 @@ export const meetings = pgTable("meetings", {
     .notNull()
     .references(() => users.id),
   visibility: visibilityEnum("visibility").notNull().default("team"),
+  // Dal Google Calendar: un meeting per evento, anche se è nel calendario di più fondatori
+  googleEventId: text("google_event_id"),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  meetLink: text("meet_link"),
+  // Testo delle note di Gemini (il recap di Google), letto da Drive
+  notes: text("notes"),
+  // I file di Meet in Drive: registrazione, trascrizione, note di Gemini
+  docs: jsonb("docs").$type<MeetingDoc[]>().notNull().default([]),
+  docsFetchedAt: timestamp("docs_fetched_at", { withTimezone: true }),
+  // Cliente e progetto scelti a mano: la sincronizzazione non li cambia più
+  linkedManually: boolean("linked_manually").notNull().default(false),
   createdAt: createdAt(),
-});
+}, (t) => [uniqueIndex("meetings_google_event_idx").on(t.googleEventId), index("meetings_occurred_idx").on(t.occurredAt)]);
+
+export type MeetingDoc = { kind: "registrazione" | "trascrizione" | "note" | "altro"; title: string; url: string; fileId: string | null; mimeType: string | null };
 
 export const meetingParticipants = pgTable("meeting_participants", {
   id: id(),
@@ -445,6 +458,110 @@ export const suggestions = pgTable("suggestions", {
 }, (t) => [index("suggestions_rule_key_idx").on(t.ruleKey)]);
 
 // ---------------------------------------------------------------------------
+// Proposte di ricontatto: uno del team propone di risentire un contatto, il team ne parla e decide
+// ---------------------------------------------------------------------------
+
+export const proposalStatusEnum = pgEnum("proposal_status", ["aperta", "approvata", "scartata"]);
+
+export const recontactProposals = pgTable(
+  "recontact_proposals",
+  {
+    id: id(),
+    personId: uuid("person_id").references(() => people.id, { onDelete: "cascade" }),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
+    proposedBy: uuid("proposed_by")
+      .notNull()
+      .references(() => users.id),
+    // Perché risentirlo
+    reason: text("reason").notNull(),
+    // Che cosa proporre, l'idea
+    idea: text("idea"),
+    status: proposalStatusEnum("status").notNull().default("aperta"),
+    decidedBy: uuid("decided_by").references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    // Il task "Ricontattare" nato dall'approvazione
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("recontact_proposals_status_idx").on(t.status)],
+);
+
+// ---------------------------------------------------------------------------
+// Finanza: entrate e uscite previste e pagate, saldi della banca. Solo per i fondatori.
+// ---------------------------------------------------------------------------
+
+export const cashDirectionEnum = pgEnum("cash_direction", ["entrata", "uscita"]);
+export const cashCategoryEnum = pgEnum("cash_category", [
+  "contratto",
+  "altro_incasso",
+  "compensi",
+  "fornitori",
+  "collaboratori",
+  "tasse",
+  "commercialista",
+  "costi_fissi",
+  "trasferte",
+  "attrezzatura",
+  "imprevisti",
+  "altro",
+]);
+// previsto: in piano; fatturato: fattura emessa o ricevuta, la data è certa; pagato: è passato dalla banca
+export const cashStatusEnum = pgEnum("cash_status", ["previsto", "fatturato", "pagato"]);
+// a_rischio: può slittare oltre il periodo (lo scenario prudente lo toglie)
+export const cashCertaintyEnum = pgEnum("cash_certainty", ["sicuro", "a_rischio"]);
+
+/** Una voce di cassa: un incasso o un pagamento, con la data prevista e, quando passa dalla banca, quella vera. */
+export const cashMovements = pgTable(
+  "cash_movements",
+  {
+    id: id(),
+    direction: cashDirectionEnum("direction").notNull(),
+    category: cashCategoryEnum("category").notNull(),
+    title: text("title").notNull(),
+    // Netto IVA, in euro
+    amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
+    dueOn: date("due_on"),
+    status: cashStatusEnum("status").notNull().default("previsto"),
+    paidOn: date("paid_on"),
+    certainty: cashCertaintyEnum("certainty").notNull().default("sicuro"),
+    // Cliente o fornitore del CRM; altrimenti il nome scritto a mano
+    companyId: uuid("company_id").references(() => companies.id),
+    counterparty: text("counterparty"),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    // Il contratto (deal vinto) da cui nasce l'incasso
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id, { onDelete: "set null" }),
+    // Per i compensi: a chi
+    userId: uuid("user_id").references(() => users.id),
+    invoiceRef: text("invoice_ref"),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("cash_movements_due_idx").on(t.dueOn),
+    index("cash_movements_company_idx").on(t.companyId),
+    index("cash_movements_opportunity_idx").on(t.opportunityId),
+  ],
+);
+
+/** Il saldo della banca a una data: il previsionale parte dall'ultimo. */
+export const bankBalances = pgTable(
+  "bank_balances",
+  {
+    id: id(),
+    on: date("on").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
+    account: text("account").notNull().default("Conto principale"),
+    note: text("note"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("bank_balances_on_idx").on(t.on)],
+);
+
+// ---------------------------------------------------------------------------
 // Google: caselle e calendari collegati
 // ---------------------------------------------------------------------------
 
@@ -462,6 +579,8 @@ export const googleAccounts = pgTable("google_accounts", {
   // Storico con i contatti del CRM (due anni), letto a blocchi di indirizzi: prossimo blocco e fine
   gmailBackfillCursor: integer("gmail_backfill_cursor").notNull().default(0),
   gmailBackfillDoneAt: timestamp("gmail_backfill_done_at", { withTimezone: true }),
+  // Calendario: alla prima lettura si va indietro di un anno per recuperare i meeting fatti
+  calendarBackfillDoneAt: timestamp("calendar_backfill_done_at", { withTimezone: true }),
   lastError: text("last_error"),
 });
 
@@ -482,7 +601,7 @@ export const calendarEvents = pgTable(
     htmlLink: text("html_link"),
     attendees: text("attendees").array().notNull().default([]),
     // Allegati dell'evento: Google Meet ci mette registrazione, trascrizione e note di Gemini (file in Drive)
-    attachments: jsonb("attachments").$type<{ title: string; url: string; mimeType: string | null }[]>().notNull().default([]),
+    attachments: jsonb("attachments").$type<{ title: string; url: string; mimeType: string | null; fileId?: string | null }[]>().notNull().default([]),
     // L'azienda dei partecipanti esterni, se la conosciamo: rende l'evento visibile al team
     companyId: uuid("company_id").references(() => companies.id),
     updatedAt: updatedAt(),

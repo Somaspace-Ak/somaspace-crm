@@ -15,7 +15,8 @@ import {
 import { decodeEntities, domainOf, isAutomated, isExcluded, isFreeMail, parseAddressList, splitName } from "@/lib/google/email";
 import { decrypt } from "../crypto";
 import { recomputeFollowups, refreshLastInteractions } from "../followups";
-import { accessToken, GoogleError, googleGet, mapLimit } from "./client";
+import { accessToken, DRIVE_MEET_SCOPE, GoogleError, googleGet, mapLimit } from "./client";
+import { syncMeetings } from "./meetings";
 
 /**
  * Sincronizzazione in sola lettura di Gmail e Calendar, una casella per fondatore.
@@ -33,7 +34,7 @@ const FIRST_SYNC_DAYS = 90;
 const MAX_MESSAGES = 400;
 const DAY = 86_400_000;
 
-type Ctx = {
+export type Ctx = {
   self: string;
   internalDomains: string[];
   excluded: string[];
@@ -267,11 +268,16 @@ type CalendarEvent = {
   end?: { dateTime?: string; date?: string };
   attendees?: { email?: string; self?: boolean; resource?: boolean }[];
   conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
-  attachments?: { title?: string; fileUrl?: string; mimeType?: string }[];
+  attachments?: { title?: string; fileUrl?: string; mimeType?: string; fileId?: string }[];
+  organizer?: { email?: string };
 };
 
-async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
-  const from = new Date(Date.now() - 31 * DAY);
+/** Un evento del calendario come lo salviamo, con l'organizzatore (serve ai meeting). */
+export type SyncedEvent = typeof calendarEvents.$inferInsert & { organizer: string | null };
+
+async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx, backfill: boolean) {
+  // La prima volta un anno indietro, per recuperare i meeting già fatti; poi il mese scorso basta
+  const from = new Date(Date.now() - (backfill ? 365 : 31) * DAY);
   const to = new Date(Date.now() + 92 * DAY);
   const events: CalendarEvent[] = [];
   let pageToken: string | undefined;
@@ -283,9 +289,10 @@ async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
     );
     events.push(...(page.items ?? []));
     pageToken = page.nextPageToken;
-  } while (pageToken && events.length < 1000);
+  } while (pageToken && events.length < 3000);
 
   const seen: string[] = [];
+  const synced: SyncedEvent[] = [];
   for (const e of events) {
     const startRaw = e.start?.dateTime ?? e.start?.date;
     if (e.status === "cancelled" || !startRaw) continue;
@@ -308,7 +315,7 @@ async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
       attendees,
       attachments: (e.attachments ?? [])
         .filter((a) => a.fileUrl)
-        .map((a) => ({ title: a.title ?? "Allegato", url: a.fileUrl!, mimeType: a.mimeType ?? null })),
+        .map((a) => ({ title: a.title ?? "Allegato", url: a.fileUrl!, mimeType: a.mimeType ?? null, fileId: a.fileId ?? null })),
       companyId,
       updatedAt: new Date(),
     };
@@ -317,6 +324,7 @@ async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
       .values(values)
       .onConflictDoUpdate({ target: [calendarEvents.userId, calendarEvents.googleId], set: values });
     seen.push(e.id);
+    synced.push({ ...values, organizer: e.organizer?.email?.toLowerCase() ?? null });
   }
   // Eventi cancellati o spostati fuori dalla finestra
   await db
@@ -329,14 +337,16 @@ async function syncCalendar(db: Db, userId: string, token: string, ctx: Ctx) {
         seen.length ? notInArray(calendarEvents.googleId, seen) : undefined,
       ),
     );
-  return { events: seen.length };
+  return { events: seen.length, synced };
 }
 
 // ---------------------------------------------------------------------------
 // Giro completo
 // ---------------------------------------------------------------------------
 
-export type SyncResult = { ok: true; scanned: number; recorded: number; proposed: number; events: number; more: boolean; recentDone: boolean } | { ok: false; error: string };
+export type SyncResult =
+  | { ok: true; scanned: number; recorded: number; proposed: number; events: number; meetings: number; more: boolean; recentDone: boolean }
+  | { ok: false; error: string };
 
 export async function syncGoogleAccount(db: Db, userId: string): Promise<SyncResult> {
   const [acc] = await db.select().from(googleAccounts).where(eq(googleAccounts.userId, userId));
@@ -345,20 +355,26 @@ export async function syncGoogleAccount(db: Db, userId: string): Promise<SyncRes
   try {
     const token = await accessToken(decrypt(acc.refreshToken));
     const ctx = await loadContext(db, acc.email);
-    const cal = await syncCalendar(db, userId, token, ctx);
+    const cal = await syncCalendar(db, userId, token, ctx, !acc.calendarBackfillDoneAt);
+    const meet = await syncMeetings(db, userId, token, ctx, cal.synced, acc.scopes.includes(DRIVE_MEET_SCOPE));
     const mail = await syncGmail(db, acc, token, ctx, started.getTime());
     await db
       .update(googleAccounts)
       // Se restano email recenti da leggere, il prossimo giro riparte dalla stessa data
-      .set({ gmailSyncedAt: mail.recentDone ? started : acc.gmailSyncedAt, calendarSyncedAt: started, lastError: null })
+      .set({
+        gmailSyncedAt: mail.recentDone ? started : acc.gmailSyncedAt,
+        calendarSyncedAt: started,
+        calendarBackfillDoneAt: acc.calendarBackfillDoneAt ?? started,
+        lastError: null,
+      })
       .where(eq(googleAccounts.userId, userId));
     await db.insert(agentLog).values({
       action: "sync_google",
       outcome: "ok",
-      detail: `${acc.email}: ${mail.recorded} email registrate, ${mail.proposed} contatti da approvare, ${cal.events} eventi${mail.more ? ", continua al prossimo giro" : ""}`,
+      detail: `${acc.email}: ${mail.recorded} email registrate, ${mail.proposed} contatti da approvare, ${cal.events} eventi, ${meet.meetings} meeting (${meet.docsRead} documenti letti)${mail.more ? ", continua al prossimo giro" : ""}`,
       onBehalfOf: userId,
     });
-    return { ok: true, ...mail, ...cal };
+    return { ok: true, ...mail, events: cal.events, meetings: meet.meetings };
   } catch (e) {
     const revoked = e instanceof GoogleError && /invalid_grant/.test(`${e.code} ${e.message}`);
     const quota = e instanceof GoogleError && e.code === "quota";

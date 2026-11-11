@@ -5,11 +5,15 @@ import "server-only";
  * Solo lettura: Gmail e Calendar non vengono mai modificati dal CRM.
  */
 
+export const DRIVE_MEET_SCOPE = "https://www.googleapis.com/auth/drive.meet.readonly";
+
 export const GOOGLE_SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
+  // Solo i file creati da Google Meet (registrazioni, trascrizioni, note di Gemini): il resto di Drive no
+  DRIVE_MEET_SCOPE,
 ];
 
 /** Cookie con lo stato della richiesta a Google, per riconoscere il ritorno. */
@@ -103,13 +107,24 @@ function isQuotaError(status: number, message: string) {
   return status === 429 || (status === 403 && /rate ?limit|quota/i.test(message));
 }
 
-export async function googleGet<T>(token: string, url: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+export function googleGet<T>(token: string, url: string, params?: Params): Promise<T> {
+  return googleFetch(token, url, params, (res) => res.json() as Promise<T>);
+}
+
+/** Come googleGet, ma la risposta è testo (es. un Google Doc esportato da Drive). */
+export function googleGetText(token: string, url: string, params?: Params): Promise<string> {
+  return googleFetch(token, url, params, (res) => res.text());
+}
+
+type Params = Record<string, string | number | boolean | undefined>;
+
+async function googleFetch<T>(token: string, url: string, params: Params | undefined, parse: (res: Response) => Promise<T>): Promise<T> {
   const u = new URL(url);
   for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined) u.searchParams.set(k, String(v));
   for (let attempt = 0; ; attempt++) {
     await throttle(token);
     const res = await fetch(u, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
-    if (res?.ok) return res.json() as Promise<T>;
+    if (res?.ok) return parse(res);
     const body = res ? await res.json().catch(() => ({})) : {};
     const message: string = body?.error?.message ?? `${u.pathname}: ${res?.status ?? "rete"}`;
     const quota = res ? isQuotaError(res.status, message) : false;

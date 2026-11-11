@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { FinanceBlock } from "@/components/crm/finance-block";
+import { canSeeFinance } from "@/server/finance";
+import { MeetingList } from "@/components/crm/meeting-list";
 import { ProjectEvents } from "@/components/crm/project-events";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { Mic, Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {AgentMark, Chip, CompanyLogo, HealthChip } from "@/components/crm/chips";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/crm/page-header";
@@ -10,7 +12,7 @@ import { Attribute, Attributes, Breadcrumb, RecordHero, RecordLayout, SideBlock,
 import { TaskList } from "@/components/crm/task-list";
 import { Timeline } from "@/components/crm/timeline";
 import { formatDate, formatEuro, relativeDay } from "@/lib/format";
-import { FACT_KIND, HEALTH, MEETING_SOURCE, PROJECT_STATUS } from "@/lib/labels";
+import { FACT_KIND, HEALTH, PROJECT_STATUS } from "@/lib/labels";
 import { CreateButton } from "@/components/crm/create-dialogs";
 import { InlineField } from "@/components/crm/inline-field";
 import { ProjectTeam } from "@/components/crm/project-team";
@@ -30,6 +32,7 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
   const { viewer } = await getViewer();
   const data = await getProject(id, viewer);
   if (!data) notFound();
+  const upcomingEvents = data.events.filter((r) => r.upcoming);
   const { p, company, owner, deal } = data;
   const open = data.tasks.filter((t) => t.status !== "fatto" && t.status !== "proposto");
   const proposed = data.tasks.filter((t) => t.status === "proposto");
@@ -139,6 +142,9 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
                 </Attribute>
               </Attributes>
             </SideBlock>
+            {canSeeFinance(viewer) ? (
+              <FinanceBlock filter={{ projectId: p.id }} defaults={{ direction: "entrata", category: "contratto", projectId: p.id, companyId: p.companyId }} />
+            ) : null}
             {data.facts.length ? (
               <SideBlock title="Cosa sappiamo">
                 <ul className="flex flex-col gap-2">
@@ -157,7 +163,7 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
         <Tabs defaultValue="task" className="gap-4">
           <TabsList variant="line" className={lineTabsList}>
             <TabsTrigger value="task" className={lineTab}>Task {open.length}</TabsTrigger>
-            <TabsTrigger value="meeting" className={lineTab}>Meeting {data.meetings.length + data.events.length}</TabsTrigger>
+            <TabsTrigger value="meeting" className={lineTab}>Meeting {data.meetings.length + upcomingEvents.length}</TabsTrigger>
             <TabsTrigger value="timeline" className={lineTab}>Timeline</TabsTrigger>
           </TabsList>
           <TabsContent value="task" className="flex flex-col gap-6">
@@ -181,27 +187,17 @@ async function Project({ params }: PageProps<"/progetti/[id]">) {
             ) : null}
           </TabsContent>
           <TabsContent value="meeting" className="flex flex-col gap-6">
-            <ProjectEvents events={data.events} />
-            {data.meetings.length ? (
-              <ul className="divide-y overflow-hidden rounded-[10px] border bg-card">
-                {data.meetings.map((m) => (
-                  <li key={m.id}>
-                    <Link href={`/meeting/${m.id}`} className="flex items-start gap-3 px-3 py-3 hover:bg-muted/40">
-                      {m.source === "nota_vocale" ? <Mic className="mt-0.5 size-4 text-muted-foreground" /> : <Users className="mt-0.5 size-4 text-muted-foreground" />}
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="text-sm font-medium">{m.title}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {MEETING_SOURCE[m.source]} · {relativeDay(m.occurredAt)} · {m.decisions.length} decisioni
-                        </span>
-                        {m.summary ? <p className="mt-1 line-clamp-2 text-sm text-foreground/80">{m.summary}</p> : null}
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : data.events.length ? null : (
-              <EmptyState>Nessun meeting collegato. Quelli del Google Calendar con il cliente compaiono qui da soli.</EmptyState>
-            )}
+            <ProjectEvents events={upcomingEvents} />
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[13px] font-semibold">
+                Fatti <span className="font-normal text-muted-foreground tabular-nums">{data.meetings.length}</span>
+              </h2>
+              <MeetingList
+                rows={data.meetings}
+                hide={["project"]}
+                empty="Nessun meeting fatto collegato. Quelli del Google Calendar con il cliente, o con il nome del progetto nel titolo, arrivano da soli con il recap di Gemini."
+              />
+            </section>
           </TabsContent>
           <TabsContent value="timeline">
             <Timeline items={data.timeline} />

@@ -8,6 +8,8 @@ import {AgentMark, Chip, ModeChip, StageChip, StrengthBar, UserAvatar } from "@/
 import { PageHeader, PageSkeleton } from "@/components/crm/page-header";
 import { QueueActions } from "@/components/crm/queue-actions";
 import { Attribute, Attributes, Breadcrumb, RecordHero, RecordLayout, SideBlock } from "@/components/crm/record";
+import { MeetingList } from "@/components/crm/meeting-list";
+import { ProposalList } from "@/components/crm/proposal-list";
 import { Timeline } from "@/components/crm/timeline";
 import { formatEuro, fullName, relativeDay } from "@/lib/format";
 import { FACT_KIND, MET_VIA, MODE } from "@/lib/labels";
@@ -60,6 +62,7 @@ async function Person({ params }: PageProps<"/people/[id]">) {
           </>
         }
         actions={<>
+            <CreateButton kind="proposta" defaults={{ personId: p.id, companyId: p.companyId ?? undefined }} label="Proponi ricontatto" />
             <CreateButton kind="interazione" defaults={{ personId: p.id, companyId: p.companyId ?? undefined }} label="Interazione" />
             <CreateButton kind="opportunita" defaults={{ personId: p.id, companyId: p.companyId ?? undefined }} label="Opportunità" />
           </>}
@@ -225,6 +228,12 @@ async function Person({ params }: PageProps<"/people/[id]">) {
         }
       >
         <div className="flex flex-col gap-6">
+          {data.proposals.length ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[13px] font-semibold">Proposte di ricontatto</h2>
+              <ProposalList rows={data.proposals} viewerId={viewer.id} compact />
+            </section>
+          ) : null}
           {data.facts.length ? (
             <section className="flex flex-col gap-2">
               <h2 className="text-[13px] font-semibold">Cosa sappiamo</h2>
@@ -252,6 +261,14 @@ async function Person({ params }: PageProps<"/people/[id]">) {
                   </li>
                 ))}
               </ul>
+            </section>
+          ) : null}
+          {data.meetings.length ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[13px] font-semibold">
+                Meeting <span className="font-normal text-muted-foreground tabular-nums">{data.meetings.length}</span>
+              </h2>
+              <MeetingList rows={data.meetings} />
             </section>
           ) : null}
           <section className="flex flex-col gap-2">

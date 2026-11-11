@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { db } from "@/db";
 import {
   agentLog,
+  cashMovements,
   companies,
   excludedAddresses,
   facts,
@@ -206,6 +207,24 @@ export async function moveOpportunity(
       });
     }
     await db.update(companies).set({ relationship: "cliente" }).where(eq(companies.id, o.companyId));
+
+    // Il contratto entra in Finanza: un incasso da pianificare (date e rate si decidono lì)
+    const [already] = await db.select({ id: cashMovements.id }).from(cashMovements).where(eq(cashMovements.opportunityId, o.id)).limit(1);
+    if (!already && extra.finalValue) {
+      const [prj] = await db.select({ id: projects.id }).from(projects).where(eq(projects.opportunityId, o.id)).limit(1);
+      await db.insert(cashMovements).values({
+        direction: "entrata",
+        category: "contratto",
+        title: o.name,
+        amount: extra.finalValue,
+        dueOn: null,
+        companyId: o.companyId,
+        projectId: prj?.id ?? null,
+        opportunityId: o.id,
+        notes: "Nato dal deal vinto: dividilo in acconto e saldo e metti le date.",
+        createdBy: viewer.id,
+      });
+    }
   }
 
   await recomputeFollowups(db);

@@ -12,7 +12,7 @@ const FLASH: Record<string, { ok: boolean; text: string }> = {
   annullato: { ok: false, text: "Collegamento annullato." },
   errore: { ok: false, text: "Collegamento non riuscito. Riprova." },
   "account-diverso": { ok: false, text: "Hai scelto un account Google diverso dal tuo: ognuno collega solo la propria casella." },
-  "permessi-mancanti": { ok: false, text: "Servono sia Gmail sia Calendar: riprova lasciando spuntati tutti i permessi." },
+  "permessi-mancanti": { ok: false, text: "Servono almeno Gmail e Calendar: riprova lasciando spuntati i permessi." },
   "non-configurato": { ok: false, text: "Google non è ancora configurato sul server (mancano le chiavi)." },
 };
 
@@ -26,7 +26,15 @@ export function GoogleConnection({
 }: {
   configured: boolean;
   flash: string | null;
-  mine: { email: string; connectedAt: Date; gmailSyncedAt: Date | null; calendarSyncedAt: Date | null; backfillDoneAt: Date | null; lastError: string | null } | null;
+  mine: {
+    email: string;
+    connectedAt: Date;
+    gmailSyncedAt: Date | null;
+    calendarSyncedAt: Date | null;
+    backfillDoneAt: Date | null;
+    lastError: string | null;
+    meetDocs: boolean;
+  } | null;
   team: { id: string; name: string; initials: string; connected: boolean }[];
 }) {
   const [pending, start] = useTransition();
@@ -36,9 +44,9 @@ export function GoogleConnection({
     start(async () => {
       const res = await syncMyGoogle();
       if (!res.ok) return void toast.error(res.error);
-      const { recorded, proposed, events, more } = res.data;
+      const { recorded, proposed, events, meetings, more } = res.data;
       toast.success(
-        `${recorded} email registrate, ${proposed} contatti nuovi in Da approvare, ${events} eventi` + (more ? ". Ce ne sono altre: rilancia o aspetta il prossimo giro" : ""),
+        `${recorded} email registrate, ${proposed} contatti nuovi in Da approvare, ${events} eventi, ${meetings} meeting nuovi` + (more ? ". Ce ne sono altre: rilancia o aspetta il prossimo giro" : ""),
       );
     });
   const disconnect = () => {
@@ -69,6 +77,13 @@ export function GoogleConnection({
               <span className="text-xs text-muted-foreground">
                 Storico con i contatti del CRM (ultimi 2 anni): {mine.backfillDoneAt ? "letto" : "in lettura, un blocco a ogni giro"}.
               </span>
+              {mine.meetDocs ? (
+                <span className="text-xs text-muted-foreground">Meeting: note di Gemini e trascrizioni lette da Drive (solo i file creati da Meet).</span>
+              ) : (
+                <span className="text-xs text-brand">
+                  Per avere il recap dei meeting (note di Gemini e trascrizioni) ricollega Google e accetta il permesso su Drive: il CRM vede solo i file creati da Meet.
+                </span>
+              )}
               {mine.lastError ? <span className="text-xs text-bad">Ultimo errore: {mine.lastError}</span> : null}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -76,9 +91,9 @@ export function GoogleConnection({
                 <RefreshCw className={pending ? "animate-spin" : undefined} aria-hidden />
                 {pending ? "Leggo…" : "Sincronizza ora"}
               </Button>
-              {mine.lastError?.includes("revocato") ? (
+              {mine.lastError?.includes("revocato") || !mine.meetDocs ? (
                 <Button size="sm" asChild>
-                  <a href="/api/google/connect">Ricollega</a>
+                  <a href="/api/google/connect">Ricollega Google</a>
                 </Button>
               ) : null}
               <Button size="sm" variant="ghost" disabled={pending} onClick={disconnect}>

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { FinanceBlock } from "@/components/crm/finance-block";
+import { canSeeFinance } from "@/server/finance";
 import { ApproveButtons } from "@/components/crm/approve-buttons";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -8,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {AgentMark, Chip, CompanyLogo, HealthChip, ModeChip, RelationshipChip, StageChip, StrengthBar, UserAvatar } from "@/components/crm/chips";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/crm/page-header";
 import { AgentBanner, Attribute, Attributes, Breadcrumb, RecordHero, RecordLayout, SideBlock, lineTab, lineTabsList } from "@/components/crm/record";
+import { MeetingList } from "@/components/crm/meeting-list";
+import { ProposalList } from "@/components/crm/proposal-list";
 import { Timeline } from "@/components/crm/timeline";
 import { formatEuro, fullName, relativeDay } from "@/lib/format";
 import { FACT_KIND, PROJECT_STATUS, RELATIONSHIP } from "@/lib/labels";
@@ -32,6 +36,7 @@ async function Company({ params }: PageProps<"/companies/[id]">) {
   if (!data) notFound();
   const { c, owner } = data;
   const toVerify = c.dataStatus === "da_verificare";
+  const openProposals = data.proposals.filter((r) => r.r.status === "aperta");
 
   return (
     <>
@@ -73,6 +78,7 @@ async function Company({ params }: PageProps<"/companies/[id]">) {
         actions={
           <>
             {owner ? <UserAvatar initials={owner.initials} name={owner.name} /> : null}
+            <CreateButton kind="proposta" defaults={{ companyId: c.id }} label="Proponi ricontatto" />
             <CreateButton kind="interazione" defaults={{ companyId: c.id }} label="Interazione" />
             <CreateButton kind="persona" defaults={{ companyId: c.id }} label="Persona" />
             <CreateButton kind="progetto" defaults={{ companyId: c.id }} label="Progetto" />
@@ -146,6 +152,9 @@ async function Company({ params }: PageProps<"/companies/[id]">) {
                 <Attribute label="Ultimo contatto">{relativeDay(c.lastInteractionAt)}</Attribute>
               </Attributes>
             </SideBlock>
+            {canSeeFinance(viewer) ? (
+              <FinanceBlock filter={{ companyId: c.id }} defaults={{ direction: c.relationship === "fornitore" ? "uscita" : "entrata", companyId: c.id }} />
+            ) : null}
           </>
         }
       >
@@ -155,10 +164,23 @@ async function Company({ params }: PageProps<"/companies/[id]">) {
             <TabsTrigger value="persone" className={lineTab}>Persone {data.people.length}</TabsTrigger>
             <TabsTrigger value="opportunita" className={lineTab}>Opportunità {data.opportunities.length}</TabsTrigger>
             <TabsTrigger value="progetti" className={lineTab}>Progetti {data.projects.length}</TabsTrigger>
+            <TabsTrigger value="meeting" className={lineTab}>Meeting {data.meetings.length}</TabsTrigger>
             <TabsTrigger value="timeline" className={lineTab}>Timeline</TabsTrigger>
           </TabsList>
 
           <TabsContent value="panoramica" className="flex flex-col gap-6">
+            {openProposals.length ? (
+              <section className="flex flex-col gap-2">
+                <h2 className="text-[13px] font-semibold">Proposte di ricontatto</h2>
+                <ProposalList rows={openProposals} viewerId={viewer.id} />
+              </section>
+            ) : null}
+            {data.meetings[0] ? (
+              <section className="flex flex-col gap-2">
+                <h2 className="text-[13px] font-semibold">Ultimo meeting</h2>
+                <MeetingList rows={data.meetings.slice(0, 1)} hide={["company"]} />
+              </section>
+            ) : null}
             {c.agentSummary ? (
               <section className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-4">
                 <AgentMark label="Stato in breve" />
@@ -248,6 +270,10 @@ async function Company({ params }: PageProps<"/companies/[id]">) {
             ) : (
               <EmptyState>Nessun progetto. Si apre da solo quando un deal è vinto.</EmptyState>
             )}
+          </TabsContent>
+
+          <TabsContent value="meeting">
+            <MeetingList rows={data.meetings} hide={["company"]} empty="Nessun meeting con questo cliente. Quelli nel Google Calendar di chiunque di noi, con un invitato di questa azienda, arrivano da soli con il recap di Gemini." />
           </TabsContent>
 
           <TabsContent value="timeline">

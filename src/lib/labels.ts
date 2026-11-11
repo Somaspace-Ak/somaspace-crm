@@ -130,3 +130,31 @@ export const DOT_CLASS: Record<Tone, string> = {
   warn: "bg-warn",
   bad: "bg-bad",
 };
+
+export const CASH_CATEGORY = {
+  contratto: { label: "Contratto", direction: "entrata" },
+  altro_incasso: { label: "Altro incasso", direction: "entrata" },
+  compensi: { label: "Compensi", direction: "uscita" },
+  fornitori: { label: "Fornitori", direction: "uscita" },
+  collaboratori: { label: "Collaboratori", direction: "uscita" },
+  tasse: { label: "Tasse e F24", direction: "uscita" },
+  commercialista: { label: "Commercialista", direction: "uscita" },
+  costi_fissi: { label: "Costi fissi", direction: "uscita" },
+  trasferte: { label: "Trasferte", direction: "uscita" },
+  attrezzatura: { label: "Attrezzatura", direction: "uscita" },
+  imprevisti: { label: "Imprevisti", direction: "uscita" },
+  altro: { label: "Altro", direction: "uscita" },
+} as const;
+
+/** Lo stato di una voce di cassa, detto come si dice per un incasso o per un pagamento. */
+export const CASH_STATUS = {
+  previsto: { entrata: "Previsto", uscita: "Previsto", tone: "neutral" },
+  fatturato: { entrata: "Fatturato", uscita: "Da pagare", tone: "cold" },
+  pagato: { entrata: "Incassato", uscita: "Pagato", tone: "ok" },
+} as const;
+
+export const CASH_CHECK = {
+  ok: { label: "OK", tone: "ok" },
+  attenzione: { label: "Attenzione", tone: "warn" },
+  scoperto: { label: "Scoperto", tone: "bad" },
+} as const;

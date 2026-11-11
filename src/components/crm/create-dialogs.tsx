@@ -18,13 +18,14 @@ import {
   createOpportunity,
   createPerson,
   createProject,
+  createProposal,
   createTask,
   type Result,
 } from "@/server/mutations";
 import { Combobox, MultiPicker } from "./combobox";
 import { useFormOptions } from "./form-options";
 
-export type CreateKind = "azienda" | "persona" | "opportunita" | "progetto" | "task" | "interazione";
+export type CreateKind = "azienda" | "persona" | "opportunita" | "progetto" | "task" | "interazione" | "proposta";
 export type CreateDefaults = {
   companyId?: string;
   personId?: string;
@@ -46,6 +47,7 @@ export const CREATE_LABEL: Record<CreateKind, string> = {
   progetto: "Nuovo progetto",
   task: "Nuovo task",
   interazione: "Aggiungi interazione",
+  proposta: "Proponi un ricontatto",
 };
 
 export function CreateButton({
@@ -98,6 +100,7 @@ const DESCRIPTION: Record<CreateKind, string> = {
   progetto: "Un progetto per cliente, con il suo team e i suoi task.",
   task: "Assegnato a te se non scegli nessuno.",
   interazione: "Chiamate e incontri fuori calendario. Aggiorna l'ultimo contatto e i follow-up.",
+  proposta: "Finisce in Proposte, dove tutto il team la vede: la discutiamo insieme e decidiamo se ricontattare.",
 };
 
 function CreateForm({ kind, defaults, onDone }: { kind: CreateKind; defaults: CreateDefaults; onDone: () => void }) {
@@ -217,13 +220,26 @@ function CreateForm({ kind, defaults, onDone }: { kind: CreateKind; defaults: Cr
             projectId,
           });
           break;
+        case "proposta":
+          if (!personId && !realCompany) {
+            setError("Scegli una persona o un'azienda");
+            return;
+          }
+          res = await createProposal({
+            personId,
+            companyId: personId ? null : realCompany,
+            reason: get("reason") ?? "",
+            idea: get("idea"),
+          });
+          if (res.ok) href = "/proposte";
+          break;
       }
       if (!res.ok) {
         setError(res.error);
         return;
       }
       const what = CREATE_LABEL[kind].replace(/^Nuov[oa] /, "");
-      toast.success(kind === "interazione" ? "Interazione registrata" : `${what[0].toUpperCase()}${what.slice(1)} creat${kind === "progetto" || kind === "task" ? "o" : "a"}`);
+      toast.success(kind === "proposta" ? "Proposta inviata al team" : kind === "interazione" ? "Interazione registrata" : `${what[0].toUpperCase()}${what.slice(1)} creat${kind === "progetto" || kind === "task" ? "o" : "a"}`);
       onDone();
       if (href) router.push(href);
     });
@@ -449,6 +465,29 @@ function CreateForm({ kind, defaults, onDone }: { kind: CreateKind; defaults: Cr
         </>
       ) : null}
 
+      {kind === "proposta" ? (
+        <>
+          {defaults.personId ? null : (
+            <>
+              {defaults.companyId ? null : (
+                <Field label="Azienda" id="r-company">
+                  <Combobox id="r-company" options={companies.filter((c) => c.value !== "__new__")} value={companyId} onChange={(v) => { setCompanyId(v); setPersonId(null); }} placeholder="Scegli l'azienda" />
+                </Field>
+              )}
+              <Field label="Persona" id="r-person">
+                <Combobox id="r-person" options={people} value={personId} onChange={setPersonId} placeholder={companyId ? "Facoltativa: tutta l'azienda" : "Scegli la persona"} />
+              </Field>
+            </>
+          )}
+          <Field label="Perché risentirlo" id="r-reason">
+            <Textarea id="r-reason" name="reason" rows={3} required autoFocus placeholder="Es. Ha appena chiuso un round, l'anno scorso il budget era il problema" />
+          </Field>
+          <Field label="Che cosa avevi in mente" id="r-idea">
+            <Textarea id="r-idea" name="idea" rows={3} placeholder="Es. Proporre il pacchetto sito + social, partendo dal caso Aperio" />
+          </Field>
+        </>
+      ) : null}
+
       {error ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
 
       <DialogFooter>
@@ -456,14 +495,14 @@ function CreateForm({ kind, defaults, onDone }: { kind: CreateKind; defaults: Cr
           Annulla
         </Button>
         <Button type="submit" disabled={pending}>
-          {pending ? "Salvo…" : kind === "interazione" ? "Registra" : "Crea"}
+          {pending ? "Salvo…" : kind === "interazione" ? "Registra" : kind === "proposta" ? "Proponi" : "Crea"}
         </Button>
       </DialogFooter>
     </form>
   );
 }
 
-function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
+export function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
@@ -474,11 +513,11 @@ function Field({ label, id, children }: { label: string; id: string; children: R
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
+export function Row({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col gap-4 sm:flex-row">{children}</div>;
 }
 
-function NativeSelect({
+export function NativeSelect({
   id,
   name,
   defaultValue,
