@@ -64,6 +64,13 @@
       "when": 1794405045638,
       "tag": "0008_finance",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794500359658,
+      "tag": "0009_quick_capture",
+      "breakpoints": true
     }
   ]
 }

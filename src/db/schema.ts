@@ -339,6 +339,8 @@ export const interactions = pgTable(
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     // Una o due righe. Il testo completo delle email non si salva mai.
     summary: text("summary"),
+    // Trascrizione completa di una nota vocale o di una conversazione (inserimento veloce)
+    transcript: text("transcript"),
     link: text("link"),
     // ID del messaggio Gmail o dell'evento: evita doppioni
     sourceId: text("source_id"),

@@ -45,7 +45,13 @@ export function Timeline({ items }: { items: TimelineItem[] & { hiddenCount?: nu
                   {INTERACTION[i.type]} · {formatDate(i.occurredAt)} alle {formatTime(i.occurredAt)}
                   {i.ownerName && i.visibility === "team" ? ` · ${i.ownerName}` : ""}
                 </div>
-                {i.summary ? <p className="mt-1 text-sm text-foreground/80">{i.summary}</p> : null}
+                {i.summary ? <p className="mt-1 text-sm whitespace-pre-line text-foreground/80">{i.summary}</p> : null}
+                {i.transcript ? (
+                  <details className="group mt-1 text-sm">
+                    <summary className="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Trascrizione completa</summary>
+                    <p className="mt-1.5 max-h-96 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 whitespace-pre-line text-foreground/80">{i.transcript}</p>
+                  </details>
+                ) : null}
               </div>
             </li>
           );

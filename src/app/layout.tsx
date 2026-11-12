@@ -20,6 +20,9 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: { default: "Somaspace CRM", template: "%s · Somaspace CRM" },
   description: "Il CRM interno di Somaspace",
+  // Aggiunto alla schermata Home su iPhone si apre a tutto schermo
+  appleWebApp: { capable: true, title: "Somaspace", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
 // Tema: la scelta salvata vince, altrimenti segue il sistema. Gira prima del primo disegno, niente lampi.

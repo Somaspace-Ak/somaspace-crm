@@ -12,6 +12,7 @@ import {
   ListChecks,
   Search,
   SlidersHorizontal,
+  Smartphone,
   Sun,
   Users,
   CheckCheck,
@@ -240,6 +241,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="gap-0.5 px-2.5 pb-3">
+        <NavItem href="/veloce" label="Inserimento veloce" icon={Smartphone} active={false} />
         <NavItem href="/impostazioni" label="Impostazioni" icon={SlidersHorizontal} active={isActive("/impostazioni")} />
         <ThemeToggle className={cn(itemClass, "w-full text-left")} />
         <DropdownMenu>

@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite"],
   cacheComponents: true,
   partialPrefetching: true,
+  experimental: {
+    // Le foto del biglietto da visita (fronte e retro) passano da una Server Action
+    serverActions: { bodySizeLimit: "4mb" },
+  },
   turbopack: {
     rules: {
       "*.css": {
