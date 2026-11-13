@@ -117,3 +117,52 @@ export async function recapConversation(input: { transcript: string; person?: st
   if (res.stop_reason === "refusal" || !res.parsed_output) throw new Error("Non sono riuscito a fare il recap");
   return res.parsed_output;
 }
+
+export const EmailDraftSchema = z.object({
+  subject: z.string().describe("Oggetto breve e concreto, niente maiuscole urlate"),
+  body: z.string().describe("Testo della mail, pronto da inviare: saluto, 3-6 frasi, chiusura con il nome di chi scrive. Niente segnaposto tra parentesi"),
+});
+export type EmailDraft = z.infer<typeof EmailDraftSchema>;
+
+/** Una mail di follow-up da rivedere e mandare: dallo storico del contatto, nel tono di chi scrive. */
+export async function writeFollowupEmail(input: {
+  from: string;
+  to: string;
+  company: string | null;
+  position: string | null;
+  language: "it" | "en";
+  purpose: string;
+  history: string[];
+}): Promise<EmailDraft> {
+  const today = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  const res = await anthropic().beta.messages.parse({
+    model: MODEL,
+    max_tokens: 4000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: { effort: "low", format: betaZodOutputFormat(EmailDraftSchema) },
+    system: [
+      "Scrivi email per i fondatori di Somaspace, un'agenzia italiana di comunicazione, brand e siti per aziende dello spazio e della tecnologia.",
+      "Email brevi, personali, senza frasi fatte da venditore e senza inventare fatti: usa solo quello che c'è nello storico.",
+      "Se lo storico è povero, una ripresa di contatto semplice e sincera. Mai promettere sconti o date che non sono nello storico.",
+    ].join(" "),
+    messages: [
+      {
+        role: "user",
+        content: [
+          `Oggi è ${today}.`,
+          `Scrive: ${input.from}.`,
+          `A: ${input.to}${input.position ? `, ${input.position}` : ""}${input.company ? ` di ${input.company}` : ""}.`,
+          `Lingua della mail: ${input.language === "en" ? "inglese" : "italiano"}.`,
+          `Scopo: ${input.purpose}`,
+          "",
+          "<storico, dal più recente>",
+          ...(input.history.length ? input.history : ["(nessuna interazione registrata)"]),
+          "</storico>",
+        ].join("\n"),
+      },
+    ],
+  });
+  if (res.stop_reason === "refusal" || !res.parsed_output) throw new Error("Non sono riuscito a scrivere la bozza");
+  return res.parsed_output;
+}

@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { BellOff, Building2, Check, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ModeChip, StrengthBar, UserAvatar } from "./chips";
+import { ModeChip, RelationshipChip, StrengthBar, UserAvatar } from "./chips";
 import { BulkOwnerBar, ownerOptions, SelectCell, SelectHeader, useSelection } from "./bulk-actions";
 import { countBy, FilterSelect, SortHeader, TableSearch, useSortedRows, ViewTabs } from "./sortable";
 import { approvePeople, assignOwner, discardPeople, inheritCompanyOwner, setFollowupModeBulk } from "@/server/mutations";
@@ -13,7 +13,8 @@ import { ApproveButtons } from "./approve-buttons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { initialsOf, relativeDay } from "@/lib/format";
 import { todayInRome } from "@/lib/followup/dates";
-import { MODE, STRENGTH } from "@/lib/labels";
+import { NO_FOLLOWUP_RELATIONSHIPS } from "@/lib/followup/engine";
+import { MODE, RELATIONSHIP, STRENGTH } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 export type PersonRow = {
@@ -22,6 +23,8 @@ export type PersonRow = {
   company: { id: string; name: string } | null;
   position: string | null;
   mode: keyof typeof MODE | null;
+  /** Relazione dell'azienda: clienti, fornitori e interni non entrano nei follow-up */
+  relationship: keyof typeof RELATIONSHIP | null;
   nextFollowupOn: string | null;
   lastInteractionAt: string | null;
   strength: keyof typeof STRENGTH;
@@ -31,11 +34,14 @@ export type PersonRow = {
   pending: boolean;
 };
 
+/** Clienti, fornitori e interni: niente follow-up, le loro email non finiscono in Oggi */
+const noFollowup = (r: PersonRow) => (NO_FOLLOWUP_RELATIONSHIPS as readonly string[]).includes(r.relationship ?? "");
+
 const persone = (n: number) => (n === 1 ? "1 persona" : `${n} persone`);
 
 export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = true }: { rows: PersonRow[]; today?: string; showOwnerFilter?: boolean }) {
   // Una scheda per modalità, più "Da approvare" per i contatti proposti dall'agente
-  const [mode, setMode] = useState<keyof typeof MODE | "da_approvare" | null>(null);
+  const [mode, setMode] = useState<keyof typeof MODE | "clienti" | "da_approvare" | null>(null);
   const pendingCount = rows.filter((r) => r.pending).length;
   const [owner, setOwner] = useState("");
   const [country, setCountry] = useState("");
@@ -43,7 +49,9 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
     () =>
       rows.filter(
         (r) =>
-          (mode === "da_approvare" ? r.pending : !r.pending && (!mode || r.mode === mode)) &&
+          (mode === "da_approvare"
+            ? r.pending
+            : !r.pending && (!mode || (mode === "clienti" ? noFollowup(r) : !noFollowup(r) && r.mode === mode))) &&
           (!owner || (owner === "none" ? !r.owner : r.owner?.id === owner)) &&
           (!country || r.country === country),
       ),
@@ -63,7 +71,7 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
       keys: {
         name: (r: PersonRow) => r.name,
         company: (r: PersonRow) => r.company?.name ?? null,
-        mode: (r: PersonRow) => (r.mode ? MODE[r.mode].label : null),
+        mode: (r: PersonRow) => (noFollowup(r) ? RELATIONSHIP[r.relationship!].label : r.mode ? MODE[r.mode].label : null),
         next: (r: PersonRow) => r.nextFollowupOn,
         last: (r: PersonRow) => r.lastInteractionAt,
         strength: (r: PersonRow) => STRENGTH[r.strength].level,
@@ -118,8 +126,9 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
           ...(Object.keys(MODE) as (keyof typeof MODE)[]).map((k) => ({
             value: k,
             label: MODE[k].label === "Nessuno" ? "Senza follow-up" : MODE[k].label === "Caldo" ? "Caldi" : "Freddi",
-            count: rows.filter((r) => !r.pending && r.mode === k).length,
+            count: rows.filter((r) => !r.pending && !noFollowup(r) && r.mode === k).length,
           })),
+          { value: "clienti" as const, label: "Clienti", count: rows.filter((r) => !r.pending && noFollowup(r)).length },
           ...(pendingCount ? [{ value: "da_approvare" as const, label: "Da approvare", count: pendingCount }] : []),
         ]}
         value={mode}
@@ -174,7 +183,11 @@ export function PeopleTable({ rows, today = todayInRome(), showOwnerFilter = tru
                     )}
                   </td>
                   <td>
-                    {r.pending ? <ApproveButtons id={r.id} size="xs" /> : <ModeChip mode={r.mode} />}
+                    {r.pending ? <ApproveButtons id={r.id} size="xs" /> : noFollowup(r) ? (
+                      <RelationshipChip value={r.relationship!} />
+                    ) : (
+                      <ModeChip mode={r.mode} />
+                    )}
                   </td>
                   <td className={cn("whitespace-nowrap tabular-nums", due ? "font-medium text-bad" : "text-muted-foreground")}>
                     {r.nextFollowupOn ? relativeDay(r.nextFollowupOn, today) : "—"}

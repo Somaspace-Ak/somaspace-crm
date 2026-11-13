@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { changeMode, markFollowupDone, moveOpportunity, snoozeBy } from "@/server/actions";
+import { prepareFollowupEmail } from "@/server/drafts";
 
 type Kind = "persona" | "opportunita";
 
@@ -60,19 +61,7 @@ export function QueueActions({
 
   return (
     <div className="flex items-center gap-1">
-      {hasDraft ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span tabIndex={0}>
-              <Button size="sm" variant="outline" disabled>
-                <Mail aria-hidden />
-                Apri bozza
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Le bozze in Gmail arrivano quando colleghiamo le caselle (fase 4)</TooltipContent>
-        </Tooltip>
-      ) : null}
+      {hasDraft ? <DraftButton kind={kind} id={id} /> : null}
       <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => markFollowupDone(kind, id), "Segnato come fatto, data ricalcolata")}>
         <Check aria-hidden />
         <span className="hidden sm:inline">Fatto</span>
@@ -171,5 +160,44 @@ function SnoozeMenu({
         <DropdownMenuItem onSelect={() => run(() => snoozeBy(kind, id, 90), "Rimandato di tre mesi")}>3 mesi</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Claude scrive la mail dallo storico del contatto, poi si apre una finestra di Gmail già compilata.
+ * La finestra si apre subito al clic (i browser bloccano quelle aperte dopo un'attesa) e si riempie quando la bozza è pronta.
+ */
+function DraftButton({ kind, id }: { kind: Kind; id: string }) {
+  const [pending, start] = useTransition();
+  const open = () => {
+    const w = window.open("", "gmail-bozza", "popup,width=760,height=720");
+    if (w) {
+      w.document.title = "Preparo la bozza…";
+      w.document.body.innerHTML = '<p style="font:15px system-ui;padding:24px;color:#555">Sto scrivendo la bozza…</p>';
+    }
+    start(async () => {
+      const res = await prepareFollowupEmail({ kind, id });
+      if (!res.ok) {
+        w?.close();
+        toast.error(res.error);
+        return;
+      }
+      const { to, subject, body, account } = res.data;
+      const q = new URLSearchParams({ ...(account ? { authuser: account } : {}), view: "cm", fs: "1", tf: "1", to, su: subject, body });
+      const url = `https://mail.google.com/mail/?${q.toString()}`;
+      if (w && !w.closed) w.location.href = url;
+      else window.open(url, "_blank");
+    });
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button size="sm" variant="outline" disabled={pending} onClick={open}>
+          <Mail aria-hidden />
+          {pending ? "Scrivo…" : "Apri bozza"}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Claude scrive la mail dallo storico, si apre in Gmail da rivedere e inviare</TooltipContent>
+    </Tooltip>
   );
 }

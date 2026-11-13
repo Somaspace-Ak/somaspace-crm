@@ -14,7 +14,7 @@ import {
 import { initialsOf } from "@/lib/format";
 
 /** Chip a pillola: sfondo tenue e testo dello stesso colore di stato. */
-export function Chip({ tone = "neutral", className, children }: { tone?: Tone; className?: string; children: React.ReactNode }) {
+export function Chip({ tone = "neutral", className, title, children }: { tone?: Tone; className?: string; title?: string; children: React.ReactNode }) {
   return (
     <span
       className={cn(
@@ -22,6 +22,7 @@ export function Chip({ tone = "neutral", className, children }: { tone?: Tone; c
         TONE_CLASS[tone],
         className,
       )}
+      title={title}
     >
       {children}
     </span>

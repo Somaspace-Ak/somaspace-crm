@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
-import { interactionPeople, interactions, opportunities, people, settings as settingsTable } from "@/db/schema";
+import { companies, interactionPeople, interactions, opportunities, people, settings as settingsTable } from "@/db/schema";
 import { toRomeDate } from "@/lib/followup/dates";
 import {
   DEFAULT_SETTINGS,
@@ -110,12 +110,14 @@ export async function loadFollowupInputs(db: Db): Promise<{
   people: QueuePerson[];
   opportunities: QueueOpportunity[];
 }> {
-  const [peopleRows, oppRows, pDates, oDates] = await Promise.all([
+  const [peopleRows, oppRows, pDates, oDates, companyRows] = await Promise.all([
     db.select().from(people),
     db.select().from(opportunities),
     personEmailDates(db),
     opportunityEmailDates(db),
+    db.select({ id: companies.id, relationship: companies.relationship }).from(companies),
   ]);
+  const relationshipOf = new Map(companyRows.map((c) => [c.id, c.relationship]));
 
   const openQuoteReferents = new Set(
     oppRows.filter((o) => o.stage === "in_progress" && o.personId).map((o) => o.personId!),
@@ -133,6 +135,7 @@ export async function loadFollowupInputs(db: Db): Promise<{
         lastInteractionOn: dates.lastInteractionOn ?? (p.lastInteractionAt ? toRomeDate(p.lastInteractionAt) : null),
         snoozeUntil: p.snoozeUntil,
         isReferentOfOpenQuote: openQuoteReferents.has(p.id),
+        relationship: p.companyId ? (relationshipOf.get(p.companyId) ?? null) : null,
       };
     }),
     opportunities: oppRows.map((o) => {

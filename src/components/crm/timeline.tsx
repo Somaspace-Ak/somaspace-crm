@@ -4,6 +4,7 @@ import type { TimelineItem } from "@/server/queries";
 import { formatDate, formatTime } from "@/lib/format";
 import { INTERACTION } from "@/lib/labels";
 import { PrivateMark } from "./chips";
+import { ThreadLink } from "./thread-link";
 import { EmptyState } from "./page-header";
 
 const ICON = {
@@ -46,6 +47,12 @@ export function Timeline({ items }: { items: TimelineItem[] & { hiddenCount?: nu
                   {i.ownerName && i.visibility === "team" ? ` · ${i.ownerName}` : ""}
                 </div>
                 {i.summary ? <p className="mt-1 text-sm whitespace-pre-line text-foreground/80">{i.summary}</p> : null}
+                {i.link?.startsWith("https://mail.google.com/") ? (
+                  <div className="mt-1">
+                    {/* Il link apre la casella di chi l'ha ricevuta: per gli altri non si aprirebbe */}
+                    {i.isMine ? <ThreadLink href={i.link} /> : <span className="text-xs text-muted-foreground">Nella casella di {i.ownerName ?? "un altro fondatore"}</span>}
+                  </div>
+                ) : null}
                 {i.transcript ? (
                   <details className="group mt-1 text-sm">
                     <summary className="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Trascrizione completa</summary>

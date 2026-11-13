@@ -45,6 +45,7 @@ async function People({ searchParams }: PageProps<"/people">) {
             company: company ? { id: company.id, name: company.name } : null,
             position: p.position,
             mode: p.followupMode,
+            relationship: company?.relationship ?? null,
             nextFollowupOn: p.nextFollowupOn,
             lastInteractionAt: p.lastInteractionAt?.toISOString() ?? null,
             strength: p.connectionStrength,

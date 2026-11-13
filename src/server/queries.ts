@@ -27,8 +27,8 @@ import {
   tasks,
   users,
 } from "@/db/schema";
-import { addDays, todayInRome, toRomeDate } from "@/lib/followup/dates";
-import { buildTodayQueue, pickDrafts, type FollowupSettings, type QueueItem } from "@/lib/followup/engine";
+import { addDays, daysBetween, todayInRome, toRomeDate } from "@/lib/followup/dates";
+import { buildTodayQueue, type FollowupSettings, type QueueItem } from "@/lib/followup/engine";
 import { fullName } from "@/lib/format";
 import { loadFollowupInputs, loadFollowupSettings } from "./followups";
 import { ensureFreshSuggestions, loadSuggestionSettings } from "./suggestions";
@@ -121,22 +121,20 @@ export type TodayEntry = QueueItem & {
   ownerId: string | null;
   value: number | null;
   reason: string;
+  /** Si può preparare una mail (c'è un indirizzo e la sezione prevede di scrivere) */
   hasDraft: boolean;
+  /** Giorni dall'ultimo contatto, o dall'email ricevuta per "Ti hanno scritto" */
+  sinceDays: number;
   href: string;
 };
 
+/** Una riga in più solo dove dice qualcosa: i giorni stanno già a destra. */
 function reasonFor(i: QueueItem, s: FollowupSettings) {
   switch (i.section) {
-    case "ti_hanno_scritto":
-      return `Ti ha scritto ${i.daysLate === 0 ? "oggi" : i.daysLate === 1 ? "ieri" : `${i.daysLate} giorni fa`}`;
     case "preventivi":
       return i.askOutcome
         ? `${s.quoteMaxReminders} promemoria senza risposta: Persa o Rimanda?`
-        : `Promemoria ${i.step} di ${s.quoteMaxReminders}: nessuna risposta da ${s.quoteReminderDays} giorni`;
-    case "caldi":
-      return `${s.warmDays} giorni dall'ultimo contatto`;
-    case "freddi":
-      return `${s.coldDays} giorni dall'ultimo contatto`;
+        : `Promemoria ${i.step} di ${s.quoteMaxReminders}`;
     case "lead_fermi":
       return "Lead fermo senza preventivo";
   }
@@ -148,7 +146,8 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
   const today = todayInRome();
   const [inputs, settings] = await Promise.all([loadFollowupInputs(db), loadFollowupSettings(db)]);
   const queue = buildTodayQueue(today, inputs.people, inputs.opportunities, settings);
-  const draftIds = new Set(pickDrafts(queue, settings).map((i) => i.id));
+  const writes = (i: QueueItem) => (i.section === "preventivi" && !i.askOutcome) || i.section === "caldi" || i.section === "freddi";
+  const since = (i: QueueItem) => (i.sinceOn ? daysBetween(i.sinceOn, today) : i.daysLate);
 
   const [peopleRows, oppRows] = await Promise.all([
     db
@@ -181,7 +180,8 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
           ownerId: r.p.ownerId,
           value: null,
           reason: reasonFor(i, settings),
-          hasDraft: draftIds.has(i.id),
+          hasDraft: writes(i) && Boolean(r.p.email),
+          sinceDays: since(i),
           href: `/people/${i.id}`,
         },
       ];
@@ -199,7 +199,8 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
         ownerId: r.o.ownerId,
         value: r.o.finalValue ?? r.o.initialValue,
         reason: reasonFor(i, settings),
-        hasDraft: draftIds.has(i.id),
+        hasDraft: writes(i) && Boolean(r.person?.email),
+        sinceDays: since(i),
         href: `/pipeline/${i.id}`,
       },
     ];
@@ -207,21 +208,8 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
 
   const visible = scope === "mine" ? entries.filter((e) => e.ownerId === viewer.id) : entries;
 
-  const [myTasks, todaysMeetings, signals, topSuggestions] = await Promise.all([
-    db
-      .select({ t: tasks, project: projects })
-      .from(tasks)
-      .innerJoin(taskAssignees, eq(taskAssignees.taskId, tasks.id))
-      .leftJoin(projects, eq(projects.id, tasks.projectId))
-      .where(
-        and(
-          scope === "mine" ? eq(taskAssignees.userId, viewer.id) : undefined,
-          inArray(tasks.status, ["da_fare", "in_corso"]),
-          lte(tasks.dueOn, addDays(today, 2)),
-          isNull(tasks.parentId),
-        ),
-      )
-      .orderBy(asc(tasks.dueOn)),
+  // I task hanno la loro area (Task): Oggi resta per le persone da sentire
+  const [todaysMeetings, signals, topSuggestions] = await Promise.all([
     db
       .select({ m: meetings, company: companies })
       .from(meetings)
@@ -242,9 +230,6 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
       .orderBy(desc(suggestions.score))
       .limit(3),
   ]);
-
-  // Un task può avere più assegnatari: una riga sola
-  const taskMap = new Map(myTasks.map((r) => [r.t.id, r]));
 
   // Briefing dei meeting di oggi: storia, decisioni, task aperti, deal in corso
   const briefings = await Promise.all(
@@ -282,7 +267,6 @@ export async function getToday(viewer: User, scope: "mine" | "team") {
     today,
     settings,
     entries: visible,
-    tasks: [...taskMap.values()],
     briefings,
     signals,
     suggestions: topSuggestions,

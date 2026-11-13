@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowDownLeft, CheckCheck, ChevronDown, ChevronRight, FileText, Flame, Lightbulb, ListChecks, Signal, Snowflake, Video } from "lucide-react";
+import { ArrowDownLeft, CheckCheck, ChevronDown, ChevronRight, FileText, Flame, Lightbulb, Signal, Snowflake, Video } from "lucide-react";
 import { AgentMark, Chip, CompanyLogo, StepBar, UserAvatar } from "@/components/crm/chips";
 import { NewMenu } from "@/components/crm/header-tools";
 import { EmptyState, PageHeader, PageSkeleton, SectionBar } from "@/components/crm/page-header";
 import { QueueActions } from "@/components/crm/queue-actions";
-import { TaskCheckbox } from "@/components/crm/task-checkbox";
 import { formatEuro, formatTime, relativeDay } from "@/lib/format";
 import { FACT_KIND, SUGGESTION_REASON } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -59,7 +58,6 @@ async function Today({ searchParams }: PageProps<"/">) {
       const items = data.entries.filter((e) => e.section === s.key);
       return { id: s.key, label: s.title.replace(" da seguire", "").replace(" da sentire", ""), n: items.length, late: items.filter((e) => e.daysLate > 0).length };
     }),
-    { id: "task", label: "Task in scadenza", n: data.tasks.length, late: data.tasks.filter(({ t }) => t.dueOn && t.dueOn < data.today).length },
     { id: "meeting", label: "Meeting", n: data.briefings.length, late: 0 },
   ];
 
@@ -98,7 +96,7 @@ async function Today({ searchParams }: PageProps<"/">) {
 
         <div className="flex flex-wrap items-start gap-6">
           <div className="min-w-0 flex-[999_1_560px] overflow-hidden rounded-[10px] border bg-card">
-            {total === 0 && !data.tasks.length ? (
+            {total === 0 ? (
               <div className="p-6">
                 <EmptyState>Niente da fare oggi. Il digest di domattina non partirà.</EmptyState>
               </div>
@@ -141,42 +139,6 @@ async function Today({ searchParams }: PageProps<"/">) {
               );
             })}
 
-            <section id="task" className="scroll-mt-20">
-              <SectionBar
-                icon={<ListChecks className="size-4 text-muted-foreground" aria-hidden />}
-                title="Task in scadenza"
-                count={data.tasks.length}
-                extra={
-                  <Link href="/task" className="text-xs text-muted-foreground hover:text-foreground">
-                    Tutti i task
-                  </Link>
-                }
-              />
-              {data.tasks.length ? (
-                <ul>
-                  {data.tasks.map(({ t, project }) => {
-                    const late = t.dueOn && t.dueOn < data.today;
-                    const today = t.dueOn === data.today;
-                    return (
-                      <li key={t.id} className="flex min-h-11 items-center gap-3 border-b px-4 py-2 hover:bg-muted">
-                        <TaskCheckbox id={t.id} done={t.status === "fatto"} label={t.title} />
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{t.title}</span>
-                        {project ? (
-                          <Link href={`/progetti/${project.id}`} className="hidden max-w-[220px] truncate rounded-full border px-2 py-0.5 text-xs hover:bg-accent sm:inline">
-                            {project.name}
-                          </Link>
-                        ) : null}
-                        <Chip tone={late ? "bad" : today ? "warn" : "neutral"} className="h-5 min-w-[84px] justify-center">
-                          {late ? `${relativeDay(t.dueOn, data.today)}` : today ? "Oggi" : relativeDay(t.dueOn, data.today)}
-                        </Chip>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="px-4 py-4 text-[13px] text-muted-foreground">Nessun task in scadenza nei prossimi due giorni.</p>
-              )}
-            </section>
           </div>
 
           <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-6">
@@ -313,8 +275,15 @@ function BriefRow({ label, children }: { label: string; children: React.ReactNod
 
 function QueueRow({ e, showOwner, maxReminders }: { e: TodayEntry; showOwner: boolean; maxReminders: number }) {
   const late = e.daysLate > 0;
+  const days = e.sinceDays === 0 ? "oggi" : e.sinceDays === 1 ? "ieri" : `${e.sinceDays} g`;
+  const daysTitle =
+    e.section === "ti_hanno_scritto"
+      ? `Ti ha scritto ${e.sinceDays === 0 ? "oggi" : e.sinceDays === 1 ? "ieri" : `${e.sinceDays} giorni fa`}`
+      : e.section === "lead_fermi"
+        ? `Lead aperto da ${e.sinceDays} giorni`
+        : `Ultimo contatto ${e.sinceDays === 0 ? "oggi" : e.sinceDays === 1 ? "ieri" : `${e.sinceDays} giorni fa`}`;
   return (
-    <li className="flex min-h-14 flex-col gap-2 border-b px-4 py-2.5 hover:bg-muted sm:flex-row sm:items-center sm:gap-3">
+    <li className="flex min-h-12 flex-col gap-2 border-b px-4 py-2 hover:bg-muted sm:flex-row sm:items-center sm:gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {e.kind === "opportunita" ? (
           <CompanyLogo name={e.companyName ?? e.title} />
@@ -326,12 +295,11 @@ function QueueRow({ e, showOwner, maxReminders }: { e: TodayEntry; showOwner: bo
             <Link href={e.href} className="font-semibold hover:underline">
               {e.title}
             </Link>{" "}
-            <span className="text-muted-foreground">· {e.subtitle}</span>
+            {e.subtitle ? <span className="text-muted-foreground">· {e.subtitle}</span> : null}
           </span>
-          <span className="truncate text-xs text-muted-foreground">
-            {e.reason}
-            {e.value ? ` · ${formatEuro(e.value)}` : ""}
-          </span>
+          {e.reason || e.value ? (
+            <span className="truncate text-xs text-muted-foreground">{[e.reason, e.value ? formatEuro(e.value) : null].filter(Boolean).join(" · ")}</span>
+          ) : null}
         </div>
       </div>
       <div className="flex items-center gap-3 pl-9 sm:pl-0">
@@ -341,13 +309,10 @@ function QueueRow({ e, showOwner, maxReminders }: { e: TodayEntry; showOwner: bo
           </span>
         ) : null}
         {showOwner && e.ownerName ? <UserAvatar initials={e.ownerName.split(" ").map((w) => w[0]).join("").slice(0, 2)} name={e.ownerName} /> : null}
-        {e.section === "ti_hanno_scritto" ? (
-          <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{e.daysLate === 0 ? "oggi" : e.daysLate === 1 ? "ieri" : `${e.daysLate} g fa`}</span>
-        ) : (
-          <Chip tone={late ? "bad" : "warn"} className="h-5 min-w-[76px] justify-center tabular-nums">
-            {late ? `${e.daysLate} g` : "Oggi"}
-          </Chip>
-        )}
+        {/* Giorni dall'ultimo contatto (o dalla sua email), in rosso quando è ora di farsi sentire */}
+        <Chip tone={late || e.section === "ti_hanno_scritto" ? "bad" : "warn"} className="h-5 min-w-[64px] justify-center tabular-nums" title={daysTitle}>
+          {days}
+        </Chip>
         <div className="ml-auto sm:ml-0">
           <QueueActions kind={e.kind} id={e.id} href={e.href} hasDraft={e.hasDraft} askOutcome={e.askOutcome} />
         </div>

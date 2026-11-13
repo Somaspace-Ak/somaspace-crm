@@ -38,10 +38,16 @@ export interface PersonFollowupInput {
   snoozeUntil: IsoDate | null;
   /** Regola 2: referente di un'opportunità In progress */
   isReferentOfOpenQuote: boolean;
+  /** Relazione dell'azienda: clienti, fornitori e interni non sono follow-up commerciali */
+  relationship?: "prospect" | "cliente" | "partner" | "fornitore" | "interno" | null;
 }
+
+/** Con queste aziende si lavora già: le loro email non diventano follow-up. */
+export const NO_FOLLOWUP_RELATIONSHIPS = ["cliente", "fornitore", "interno"] as const;
 
 export type PersonFollowupState =
   | "non_attivo"
+  | "gia_cliente"
   | "sospeso_preventivo"
   | "rimanda"
   | "attesa_risposta"
@@ -71,6 +77,8 @@ export function personFollowup(
 ): PersonFollowup {
   // Regola 8: archiviati e modalità Nessuno escono da tutto
   if (p.status !== "attivo" || p.mode === "nessuno") return { state: "non_attivo", nextOn: null };
+  // Clienti, fornitori, interni: ci si scrive per lavoro, non sono contatti da rincorrere
+  if (p.relationship && (NO_FOLLOWUP_RELATIONSHIPS as readonly string[]).includes(p.relationship)) return { state: "gia_cliente", nextOn: null };
   // Regola 2: un solo canale, comanda la sequenza del preventivo
   if (p.isReferentOfOpenQuote) return { state: "sospeso_preventivo", nextOn: null };
 
@@ -174,6 +182,8 @@ export interface QueueItem {
   personId: string | null;
   dueOn: IsoDate | null;
   daysLate: number;
+  /** Ultimo contatto (caldi e freddi) o ultima email ricevuta (ti hanno scritto): da qui i giorni in rosso */
+  sinceOn: IsoDate | null;
   step: number | null;
   /** Dopo il passo 4: chiedere Persa o Rimanda invece di scrivere */
   askOutcome: boolean;
@@ -207,6 +217,7 @@ export function buildTodayQueue(
         personId: o.personId,
         dueOn: addDays(o.createdOn, s.staleLeadDays),
         daysLate: daysBetween(o.createdOn, today) - s.staleLeadDays,
+        sinceOn: o.createdOn,
         step: null,
         askOutcome: false,
       });
@@ -222,6 +233,7 @@ export function buildTodayQueue(
         personId: o.personId,
         dueOn: o.lastInboundOn,
         daysLate: o.lastInboundOn ? daysBetween(o.lastInboundOn, today) : 0,
+        sinceOn: o.lastInboundOn,
         step: o.step,
         askOutcome: false,
       });
@@ -233,6 +245,7 @@ export function buildTodayQueue(
         personId: o.personId,
         dueOn: o.lastFollowupOn,
         daysLate: o.lastFollowupOn ? daysBetween(o.lastFollowupOn, today) : 0,
+        sinceOn: maxDate(o.lastFollowupOn, o.lastOutboundOn, o.quoteSentOn),
         step: o.step,
         askOutcome: true,
       });
@@ -244,6 +257,7 @@ export function buildTodayQueue(
         personId: o.personId,
         dueOn: f.nextOn,
         daysLate: daysBetween(f.nextOn, today),
+        sinceOn: maxDate(o.lastFollowupOn, o.lastOutboundOn, o.quoteSentOn),
         step: f.nextStep,
         askOutcome: false,
       });
@@ -261,6 +275,7 @@ export function buildTodayQueue(
         personId: p.id,
         dueOn: p.lastInboundOn,
         daysLate: p.lastInboundOn ? daysBetween(p.lastInboundOn, today) : 0,
+        sinceOn: p.lastInboundOn,
         step: null,
         askOutcome: false,
       });
@@ -272,6 +287,7 @@ export function buildTodayQueue(
         personId: p.id,
         dueOn: f.nextOn,
         daysLate: daysBetween(f.nextOn, today),
+        sinceOn: maxDate(p.lastInteractionOn, p.lastInboundOn, p.lastOutboundOn),
         step: null,
         askOutcome: false,
       });

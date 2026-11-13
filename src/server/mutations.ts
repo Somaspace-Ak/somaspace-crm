@@ -533,8 +533,13 @@ export async function updateField(entity: Entity, id: string, field: string, val
     await refreshLastInteractions(db);
   }
 
-  if (entity === "person" && ["followupMode", "snoozeUntil"].includes(field)) {
+  if (entity === "person" && ["followupMode", "snoozeUntil", "companyId"].includes(field)) {
     await recomputeFollowups(db, { people: [id] });
+  }
+  // Un'azienda che diventa cliente esce dai follow-up insieme alle sue persone
+  if (entity === "company" && field === "relationship") {
+    const staff = await db.select({ id: people.id }).from(people).where(eq(people.companyId, id));
+    if (staff.length) await recomputeFollowups(db, { people: staff.map((r) => r.id) });
   }
   if (entity === "opportunity" && ["quoteSentOn", "snoozeUntil", "personId"].includes(field)) {
     await recomputeFollowups(db);

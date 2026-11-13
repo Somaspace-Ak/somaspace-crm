@@ -124,8 +124,20 @@ describe("relazioni calde e fredde", () => {
       { ...person({ mode: "freddo", lastOutboundOn: "2026-07-01" }), id: "freddo" },
     ];
     const queue = buildTodayQueue("2026-10-01", people, []);
-    expect(queue.find((i) => i.id === "caldo")).toMatchObject({ section: "caldi", daysLate: 0 });
-    expect(queue.find((i) => i.id === "freddo")).toMatchObject({ section: "freddi", daysLate: 2 });
+    expect(queue.find((i) => i.id === "caldo")).toMatchObject({ section: "caldi", daysLate: 0, sinceOn: "2026-09-01" });
+    expect(queue.find((i) => i.id === "freddo")).toMatchObject({ section: "freddi", daysLate: 2, sinceOn: "2026-07-01" });
+  });
+
+  it("clienti, fornitori e interni non entrano mai nei follow-up, neanche quando ci scrivono", () => {
+    const people: QueuePerson[] = [
+      { ...person({ mode: "caldo", lastOutboundOn: "2026-08-01", relationship: "cliente" }), id: "cliente" },
+      { ...person({ mode: "caldo", lastInboundOn: "2026-09-30", relationship: "cliente" }), id: "cliente-scrive" },
+      { ...person({ mode: "freddo", lastOutboundOn: "2026-01-01", relationship: "fornitore" }), id: "fornitore" },
+      { ...person({ mode: "caldo", lastOutboundOn: "2026-08-01", relationship: "prospect" }), id: "prospect" },
+    ];
+    expect(personFollowup(people[1]).state).toBe("gia_cliente");
+    const queue = buildTodayQueue("2026-10-01", people, []);
+    expect(queue.map((i) => i.id)).toEqual(["prospect"]);
   });
 
   it("persona Caldo referente di un deal In progress riceve solo le bozze del preventivo", () => {
